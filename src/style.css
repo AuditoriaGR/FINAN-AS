@@ -77,3 +77,30 @@
 @media(max-width:1100px){.planning-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:730px){.scenario-form{grid-template-columns:repeat(2,minmax(0,1fr))}.opportunity-grid{grid-template-columns:1fr}.spending-trend-row{grid-template-columns:83px minmax(0,1fr) 99px;gap:8px}.spending-trend-row>strong{font-size:12px}}
 @media(max-width:460px){.planning-stats>div{padding:12px}.planning-stats strong{font-size:17px}.scenario-form{grid-template-columns:1fr}.spending-trend-row{grid-template-columns:70px minmax(0,1fr) 84px;font-size:11px}.spending-trend-row>strong{font-size:11px}.opportunity-saving{flex-wrap:wrap}.future-planning .table-wrap{overflow-x:auto}}
+
+/* Saldo disponível separado do patrimônio aplicado (CDB e investimentos) */
+@media(min-width:1201px){
+ .kpis{grid-template-columns:repeat(5,minmax(0,1fr))}
+ .kpis>.kpi{padding:19px 16px}
+ .kpis>.kpi strong{font-size:clamp(18px,1.65vw,25px);white-space:normal;overflow-wrap:anywhere}
+}
+.investment-overview{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:10px 0 22px}
+.investment-summary-tile{display:flex;align-items:flex-start;gap:13px;border:1px solid #dce8e6;background:#f7fbfa;border-radius:15px;padding:19px;min-width:0}
+.investment-summary-tile:nth-child(2){background:#f5f7fc;border-color:#dfe6f5}
+.investment-summary-tile>svg{flex-shrink:0;color:#17867b}
+.investment-summary-tile:nth-child(2)>svg{color:#647ead}
+.investment-summary-tile>div{display:flex;flex-direction:column;gap:5px;min-width:0}
+.investment-summary-tile small{font-size:12px;color:#60737a}
+.investment-summary-tile strong{font-size:25px;font-weight:750;color:#163b40;overflow-wrap:anywhere}
+.investment-summary-tile span{font-size:12px;color:#6d7f89;line-height:1.55}
+.account-purpose-section{margin:20px 0 24px}
+.account-purpose-heading{display:flex;justify-content:space-between;align-items:center;gap:16px;margin:0 0 15px;flex-wrap:wrap}
+.account-purpose-heading h2{font-size:18px;line-height:1.35;margin:0 0 5px}
+.account-purpose-heading p{font-size:13px;color:#637680;margin:0}
+.account-purpose-heading>strong{font-size:20px;color:#173f45;white-space:nowrap}
+@media(max-width:690px){
+ .investment-overview{grid-template-columns:1fr;gap:10px}
+ .investment-summary-tile{padding:15px}
+ .investment-summary-tile strong{font-size:22px}
+ .account-purpose-heading h2{font-size:16px}
+}
