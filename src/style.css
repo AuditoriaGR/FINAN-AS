@@ -34,3 +34,46 @@
 .card-spending-budget>.small-hint:last-child{margin-top:14px}
 @media(max-width:900px){.card-budget-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:530px){.card-limit-form .field{max-width:none;width:100%}.card-limit-form .primary{width:100%}.card-budget-stats{grid-template-columns:repeat(2,minmax(0,1fr))}.card-budget-stats strong{font-size:18px}.card-budget-card{align-items:flex-start}.card-budget-card>strong{white-space:nowrap}}
+
+/* Planejamento protegido, cenários de compra e inteligência de gastos */
+.future-planning,.spending-insights{display:grid;gap:18px}
+.future-planning .panel,.spending-insights .panel{min-width:0}
+.future-planning .panel-head h2,.spending-insights .panel-head h2{display:flex;gap:9px;align-items:center}
+.planning-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.planning-stats>div{background:var(--surface-2,#f7faf9);border:1px solid var(--border,#e2e8e6);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:6px;min-width:0}
+.planning-stats small{font-size:12px;color:var(--muted,#67777d)}
+.planning-stats strong{font-size:22px;letter-spacing:-.025em;overflow-wrap:anywhere}
+.planning-stats span{color:var(--muted,#67777d);font-size:11px}
+.scenario-form{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;margin:18px 0}
+.scenario-form .field{min-width:0}
+.scenario-form input,.scenario-form select{width:100%}
+.scenario-feedback{display:flex;align-items:flex-start;gap:12px;padding:15px;border-radius:13px;margin:14px 0;border:1px solid #d7e2e5;background:#f4f8fa;color:#34526a}
+.scenario-feedback.ok{background:#f0faf5;border-color:#bedfd1;color:#255b45}
+.scenario-feedback.warn{background:#fff7ee;border-color:#f4d9b9;color:#80502a}
+.scenario-feedback.neutral{background:#f4f7fb;color:#476078}
+.scenario-feedback strong{display:block;margin-bottom:5px}
+.scenario-feedback p{margin:0;font-size:13px;line-height:1.6}
+.scenario-feedback>svg{flex-shrink:0;margin-top:1px}
+.scenario-note{display:flex;gap:8px;align-items:center;color:#ad5f39;font-size:13px}
+.scenario-note>svg{flex-shrink:0}
+.scenario-stats{margin:18px 0}
+.planning-footnote{display:flex;align-items:center;gap:9px;font-size:13px;color:var(--muted,#66767b);padding:0 2px}
+.planning-footnote>svg{flex-shrink:0}
+.spending-trend-bars{display:grid;gap:16px;margin:18px 0}
+.spending-trend-row{display:grid;grid-template-columns:115px minmax(0,1fr) 126px;align-items:center;gap:14px;font-size:13px}
+.spending-trend-row>strong{text-align:right;white-space:nowrap}
+.spending-trend-track{background:#edf3f1;border-radius:999px;overflow:hidden;height:12px}
+.spending-trend-track>div{height:100%;background:#228477;border-radius:999px;min-width:0;transition:width .2s}
+.opportunity-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:13px;margin:12px 0}
+.opportunity-item{border:1px solid #dde6e4;background:#f9fbfa;border-radius:13px;padding:16px;min-width:0}
+.opportunity-item .line-between{gap:8px;flex-wrap:wrap}
+.opportunity-item .line-between>span{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--muted,#6d7c80)}
+.opportunity-item p{font-size:13px;color:var(--muted,#64748b);line-height:1.6;margin:9px 0}
+.opportunity-saving{display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px solid #e5ebeb;padding-top:12px;margin-top:12px;font-size:12px}
+.opportunity-saving strong{color:#168474;white-space:nowrap}
+.insight-notes{display:grid;gap:7px;margin-top:18px}
+.insight-notes p{font-size:12px;line-height:1.55;display:flex;align-items:flex-start;gap:8px;color:var(--muted,#6b7b80);margin:0}
+.insight-notes svg{flex-shrink:0;margin-top:2px}
+@media(max-width:1100px){.planning-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:730px){.scenario-form{grid-template-columns:repeat(2,minmax(0,1fr))}.opportunity-grid{grid-template-columns:1fr}.spending-trend-row{grid-template-columns:83px minmax(0,1fr) 99px;gap:8px}.spending-trend-row>strong{font-size:12px}}
+@media(max-width:460px){.planning-stats>div{padding:12px}.planning-stats strong{font-size:17px}.scenario-form{grid-template-columns:1fr}.spending-trend-row{grid-template-columns:70px minmax(0,1fr) 84px;font-size:11px}.spending-trend-row>strong{font-size:11px}.opportunity-saving{flex-wrap:wrap}.future-planning .table-wrap{overflow-x:auto}}
