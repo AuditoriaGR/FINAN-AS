@@ -1,8 +1,24 @@
 import {describe,it,expect} from 'vitest';
-import {accountBalance,budgetStatus,cardInvoice,cents,dueDate,forecast,goalProgress,installmentPlan,invoiceMonthForPurchase,monthShift,totals} from '../src/finance';
+import {accountBalance,budgetStatus,cardInvoice,cents,dueDate,forecast,goalProgress,installmentPlan,invoiceMonthForPurchase,monthShift,totals,installmentSummary} from '../src/finance';
 import {blankData,type Tx} from '../src/types';
 const makeTx=(fields:Partial<Tx>):Tx=>({id:'test',owner_id:'u1',household_id:null,scope:'private',description:'Test',type:'expense',category:'Alimentação',amount_cents:10000,transaction_date:'2026-11-01',due_date:'2026-11-10',paid_at:null,account_id:null,card_id:null,installment_group_id:null,installment_number:null,installment_total:null,recurring_rule_id:null,...fields});
 describe('regras financeiras',()=>{
+ it('aceita 120, 240 e 360 parcelas sem limite de 72',()=>{
+  expect(installmentPlan(120000,120,'2026-11',10)).toHaveLength(120);
+  expect(installmentPlan(240000,240,'2026-11',10)).toHaveLength(240);
+  expect(installmentSummary(360000,360,'total').totalCents).toBe(360000);
+ });
+ it('calcula o valor total a partir do valor de cada parcela',()=>{
+  expect(installmentSummary(45000,120,'installment')).toEqual({totalCents:5400000,firstCents:45000,lastCents:45000,amountPerCents:45000});
+ });
+ it('divide valor total com centavos sem arredondar o total',()=>{
+  expect(installmentSummary(10001,3,'total')).toEqual({totalCents:10001,firstCents:3334,lastCents:3333,amountPerCents:null});
+ });
+ it('evita parcelas sem valor e estouro de precisão',()=>{
+  expect(()=>installmentSummary(5,6,'total')).toThrow();
+  expect(()=>installmentSummary(9007199254740991,2,'installment')).toThrow();
+  expect(()=>installmentSummary(100,2.5,'total')).toThrow();
+ });
  it('divide parcelas mantendo centavos exatos',()=>{const plan=installmentPlan(100001,3,'2026-11',12);expect(plan.map(x=>x.amount_cents)).toEqual([33334,33334,33333]);expect(plan.map(x=>x.due_date)).toEqual(['2026-11-12','2026-12-12','2027-01-12'])});
  it('não conta pagamento da fatura como nova despesa',()=>{const tx=makeTx({card_id:'card',amount_cents:50000});const pay={id:'p1',card_id:'card',owner_id:'u1',account_id:'bank',statement_month:'2026-11',amount_cents:30000,paid_at:'2026-11-11'};expect(cardInvoice('card','2026-11',[tx],[pay]).outstanding).toBe(20000);expect(totals([tx],'2026-11').expense).toBe(50000)});
  it('calcula saldo de conta com compras pagas e pagamentos de fatura',()=>{const account={id:'bank',owner_id:'u1',scope:'private' as const,household_id:null,name:'Banco',kind:'Corrente',opening_balance_cents:120000};const txs=[makeTx({type:'income',paid_at:'2026-11-05',account_id:'bank',amount_cents:20000}),makeTx({type:'expense',paid_at:'2026-11-06',account_id:'bank',amount_cents:10000}),makeTx({type:'expense',paid_at:null,account_id:'bank',amount_cents:10000})];const pay={id:'p',owner_id:'u1',card_id:'card',account_id:'bank',statement_month:'2026-11',amount_cents:20000,paid_at:'2026-11-15'};expect(accountBalance(account,txs,[pay])).toBe(110000)});
