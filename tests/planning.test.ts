@@ -44,8 +44,7 @@ describe('saldo inicial e finanças compartilhadas',()=>{
    transactions:[novRui,novTaina,novApartment,
     tx('extra-income','2026-11','Outros',100000,shared({type:'income',paid_at:null})),
     tx('upcoming-expense','2026-11','Compras',50000,shared({paid_at:null}))
-   ],
-   card_spending_limits:[{id:'cap',owner_id:uid,household_id:house,effective_month:'2026-11',amount_cents:10000}]
+   ]
   };
   const rui=projectedWithCarryForward(data,'all',uid,'2026-11',2,'2026-11');
   const taina=projectedWithCarryForward(data,'all','u2','2026-11',2,'2026-11');
