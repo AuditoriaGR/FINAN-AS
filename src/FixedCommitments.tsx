@@ -11,11 +11,12 @@ type Props={
   onEditFixed:(id:string)=>void;
   onToggleFixed:(rule:Recurring)=>void;
   onRemoveFixed:(id:string)=>void;
+  onAdjustFixed:(rule:Recurring)=>void;
   onNewInstallment:()=>void;
   onGenerate:()=>void;
 };
 
-export default function FixedCommitments({rules,transactions,uid,month,onNewFixed,onEditFixed,onToggleFixed,onRemoveFixed,onNewInstallment,onGenerate}:Props){
+export default function FixedCommitments({rules,transactions,uid,month,onNewFixed,onEditFixed,onToggleFixed,onRemoveFixed,onAdjustFixed,onNewInstallment,onGenerate}:Props){
  const active=rules.filter(r=>r.is_active!==false&&r.start_month<=month&&(!r.end_month||r.end_month>=month));
  const groups=new Map<string,Tx[]>();
  for(const t of transactions){
@@ -32,7 +33,7 @@ export default function FixedCommitments({rules,transactions,uid,month,onNewFixe
 
  return <>
   <div className="section-intro">
-   <p>Cadastre uma única vez as entradas e saídas mensais. Parcelamentos são distribuídos mês a mês, inclusive fora do cartão.</p>
+   <p>Cadastre salários e contas fixas, como luz e água, com valores mensais fixos ou variáveis. Parcelamentos podem ter qualquer quantidade positiva de parcelas, no cartão ou fora dele.</p>
    <div className="panel-actions">
     <button className="secondary" onClick={()=>onNewFixed('income')}><Plus size={16}/> Receita fixa</button>
     <button className="secondary" onClick={()=>onNewFixed('expense')}><Plus size={16}/> Despesa fixa</button>
@@ -48,20 +49,21 @@ export default function FixedCommitments({rules,transactions,uid,month,onNewFixe
    <div className="panel-head"><div><h2>{kind==='income'?'Receitas fixas':'Despesas fixas'}</h2><p>{kind==='income'?'Salário, renda recorrente e aluguéis recebidos':'Aluguel, condomínio, energia, internet e assinaturas'}</p></div>
     <button className="secondary small" onClick={()=>onNewFixed(kind)}><Plus size={15}/> Adicionar</button></div>
    <div className="recurring-list">
-   {rules.filter(r=>r.type===kind).map(r=><div className="recurring-row fixed-row" key={r.id}>
+   {rules.filter(r=>r.type===kind).map(r=>{const actual=transactions.find(t=>t.recurring_rule_id===r.id&&t.due_date.startsWith(month));return <div className="recurring-row fixed-row" key={r.id}>
     <span className="icon-badge teal">{kind==='income'?<ArrowDownRight size={17}/>:<ArrowUpRight size={17}/>}</span>
     <div className="fixed-details">
      <strong>{r.description}</strong>
-     <small>Dia {r.day_of_month} · {r.category} · Início {monthName(r.start_month)} {r.end_month?`· Até ${monthName(r.end_month)}`:''}</small>
+     <small>Dia {r.day_of_month} · {r.category} · Início {monthName(r.start_month)} {r.end_month?`· Até ${monthName(r.end_month)}`:''}{r.amount_mode==='variable'?' · Valor variável':''}</small>
      <div className="fixed-tags"><span className={`tag ${r.scope}`}>{r.scope==='shared'?'Casal':'Individual'}</span><span className={`status ${r.is_active===false?'pending':'paid'}`}>{r.is_active===false?'Pausada':'Ativa'}</span></div>
     </div>
-    <div className="fixed-amount"><strong className={kind==='income'?'positive':''}>{kind==='income'?'+':'−'} {money(r.amount_cents)}</strong><small>por mês</small></div>
+    <div className="fixed-amount"><strong className={kind==='income'?'positive':''}>{kind==='income'?'+':'−'} {money(actual?.amount_cents??r.amount_cents)}</strong><small>{r.amount_mode==='variable'?(actual?'valor deste mês':'estimativa mensal'):'por mês'}</small></div>
     {r.owner_id===uid&&<div className="fixed-actions">
-     <button className="secondary small" onClick={()=>onEditFixed(r.id)}>Editar</button>
+     {r.amount_mode==='variable'&&<button className="secondary small" onClick={()=>onAdjustFixed(r)}>Informar valor do mês</button>}
+     <button className="secondary small" onClick={()=>onEditFixed(r.id)}>Editar regra</button>
      <button className="secondary small" onClick={()=>onToggleFixed(r)}>{r.is_active===false?'Retomar':'Pausar'}</button>
      <button className="icon-button" title="Excluir regra fixa; os lançamentos anteriores permanecem" onClick={()=>onRemoveFixed(r.id)}><X size={17}/></button>
     </div>}
-   </div>)}
+   </div>})}
    {!rules.some(r=>r.type===kind)&&<div className="empty"><p>Nenhuma {kind==='income'?'receita':'despesa'} fixa cadastrada.</p><button className="link-button" onClick={()=>onNewFixed(kind)}>Adicionar primeira {kind==='income'?'receita':'despesa'}</button></div>}
    </div>
   </section>)}
@@ -79,7 +81,7 @@ export default function FixedCommitments({rules,transactions,uid,month,onNewFixe
    <p className="small-hint">No cartão, o valor pendente inclui parcelas distribuídas nas faturas. Pagar a fatura não duplica a despesa.</p>
   </section>
   <div className="section-intro">
-   <p>As contas fixas do mês são geradas automaticamente ao acessar o aplicativo ou mudar de mês. Alterar uma regra não muda lançamentos já gerados.</p>
+   <p>As contas fixas são geradas automaticamente ao acessar o mês. Contas variáveis usam uma estimativa que pode ser ajustada só para o mês atual. Alterações da regra não modificam períodos anteriores.</p>
    <button className="secondary" onClick={onGenerate}><RotateCcw size={16}/> Conferir fixas de {monthName(month)}</button>
   </div>
   <p className="small-hint">Referência de hoje: {today().split('-').reverse().join('/')}.</p>
