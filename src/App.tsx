@@ -13,7 +13,7 @@ import {blankData,categories,type Tables,type Tx,type Scope,type Household} from
 import {money,cents,monthShift,dueDate,today,monthName,visible,totals,budgetStatus,goalProgress,accountBalance,cardInvoice,generateAlerts,installmentPlan,installmentSummary,invoiceMonthForPurchase,isoMonth,recurringDueDateForCharge,cardSpendingSummary} from './finance';
 
 type Page='dashboard'|'transactions'|'fixed'|'budgets'|'goals'|'cards'|'accounts'|'planning'|'comparison'|'insights'|'alerts'|'settings';
-type Modal='transaction'|'budget'|'goal'|'contribution'|'account'|'card'|'recurring'|'adjustfixed'|'payment'|null;
+type Modal='transaction'|'budget'|'goal'|'contribution'|'account'|'accountbalance'|'card'|'cardstatement'|'recurring'|'adjustfixed'|'payment'|null;
 type View='all'|'mine'|'shared';
 const nav:{id:Page;name:string;icon:typeof LayoutDashboard}[]=[{id:'dashboard',name:'Visão geral',icon:LayoutDashboard},{id:'transactions',name:'Lançamentos',icon:ArrowLeftRight},{id:'fixed',name:'Fixas e parcelas',icon:RotateCcw},{id:'budgets',name:'Limites e orçamentos',icon:PieIcon},{id:'goals',name:'Metas',icon:Target},{id:'cards',name:'Cartões',icon:CreditCard},{id:'accounts',name:'Contas',icon:Wallet},{id:'planning',name:'Planejamento',icon:CalendarDays},{id:'comparison',name:'Comparativos',icon:ChartNoAxesCombined},{id:'insights',name:'Tendências e economia',icon:TrendingUp},{id:'alerts',name:'Alertas',icon:Bell},{id:'settings',name:'Configurações',icon:Settings}];
 const palette=['#1c7c78','#e3a864','#8691ce','#d27c74','#72a3ba','#bb92a6','#738d71','#ad998a'];
@@ -40,7 +40,7 @@ export default function App(){
   if(!client)return;
   const who=await client.auth.getUser();if(!who.data.user){setUser(null);setAuthLoaded(true);return}
   const me=who.data.user;setUser(me);
-  const tables:(keyof Tables)[]=['card_spending_limits','accounts','credit_cards','transactions','category_budgets','financial_goals','goal_contributions','recurring_rules','card_payments','household_members'];
+  const tables:(keyof Tables)[]=['account_balance_adjustments','card_statement_totals','card_spending_limits','accounts','credit_cards','transactions','category_budgets','financial_goals','goal_contributions','recurring_rules','card_payments','household_members'];
   const results=await Promise.all(tables.map(async table=>{
     const rows:unknown[]=[];let error:null|{message:string}=null;let offset=0;
     // Paginação evita o limite padrão de 1.000 registros por consulta, importante para parcelamentos longos.
@@ -73,11 +73,23 @@ export default function App(){
   const initial={scope:household?'shared':'private',type:'expense',category:'Supermercado',date:today(),due:today(),month,amount:'',installments:'1',installmentAmountMode:'total',fixedAmountMode:'fixed',day:'10',closing:'2',dueDay:'12',kind:'Conta corrente',deadline:'',name:'',description:'',paid:'no',...(m==='account'?{amount:'0,00'}:{})};
   const existing=(m==='recurring'||m==='adjustfixed')&&id?data.recurring_rules.find(r=>r.id===id):null;
   const actual=m==='adjustfixed'&&existing?data.transactions.find(t=>t.recurring_rule_id===existing.id&&isoMonth(t.transaction_date)===month):null;
+  if(m==='accountbalance'){
+   const account=data.accounts.find(a=>a.id===id);
+   if(account){const value=accountBalance(account,data.transactions,data.card_payments,data.account_balance_adjustments);
+    setForm({...initial,amount:(value/100).toFixed(2).replace('.',','),reason:'Conciliação de saldo atual'});return}
+  }
+  if(m==='cardstatement'){
+   const card=data.credit_cards.find(c=>c.id===id);
+   if(card){
+    const bill=cardInvoice(card.id,month,data.transactions,data.card_payments,data.card_statement_totals);
+    const existingRecord=data.card_statement_totals.find(x=>x.card_id===id&&x.statement_month===month);
+    setForm({...initial,amount:(bill.charged/100).toFixed(2).replace('.',','),statementMonth:month,notes:existingRecord?.notes||'Fatura real informada no início do controle'});return}
+  }
   setForm(existing?{...initial,scope:existing.scope,type:existing.type,category:existing.category,description:existing.description,day:String(existing.day_of_month),month:existing.start_month,endMonth:existing.end_month||'',paymentTarget:existing.card_id||existing.account_id||'',fixedAmountMode:existing.amount_mode||'fixed',amount:((actual?.amount_cents??existing.amount_cents)/100).toFixed(2).replace('.',',')}:initial);
  };
  const f=(key:string,value:string)=>setForm(old=>({...old,[key]:value}));
  const scopeProps=()=>({owner_id:uid,scope:form.scope||'private',household_id:form.scope==='shared'?household?.id:null});
- const submitModal=async(e:FormEvent)=>{e.preventDefault();if(!modal)return;setBusy(true);let okay=false;const amount=cents(form.amount||'0');try{if(!Number.isSafeInteger(amount)||((modal!=='account')&&amount<=0))throw Error('Informe um valor válido');
+ const submitModal=async(e:FormEvent)=>{e.preventDefault();if(!modal)return;setBusy(true);let okay=false;const amount=cents(form.amount||'0');try{if(!Number.isSafeInteger(amount)||((modal!=='account'&&modal!=='accountbalance'&&modal!=='cardstatement')&&amount<=0)|| (modal==='cardstatement'&&amount<0))throw Error('Informe um valor válido');
   if(modal==='transaction'){
    const card=data.credit_cards.find(c=>c.id===form.paymentTarget);
    const count=Number(form.installments||1);
@@ -120,6 +132,45 @@ export default function App(){
   else if(modal==='contribution')okay=await create('goal_contributions',{goal_id:context,owner_id:uid,amount_cents:amount});
   else if(modal==='account')okay=await create('accounts',{...scopeProps(),name:form.name,kind:form.kind,opening_balance_cents:cents(form.amount||'0')});
   else if(modal==='card')okay=await create('credit_cards',{...scopeProps(),name:form.name,credit_limit_cents:amount,closing_day:Number(form.closing),due_day:Number(form.dueDay)});
+  else if(modal==='accountbalance'){
+   const account=data.accounts.find(a=>a.id===context);
+   if(!account||account.owner_id!==uid)throw Error('Somente o titular pode atualizar o saldo desta conta');
+   if(db){
+    const r=await db.rpc('reconcile_account_balance',{
+     p_account_id:context,p_new_balance_cents:amount,p_reason:form.reason||'Conciliação manual de saldo'
+    });
+    if(r.error)throw Error(r.error.message);
+    await refresh();saveNotice(Number(r.data)===0?'O saldo já estava atualizado.':'Saldo da conta atualizado e conciliação registrada.');okay=true;
+   }else{
+    const current=accountBalance(account,data.transactions,data.card_payments,data.account_balance_adjustments);
+    if(amount!==current)okay=await create('account_balance_adjustments',{
+     account_id:context,owner_id:uid,delta_cents:amount-current,
+     balance_before_cents:current,balance_after_cents:amount,reason:form.reason||'Conciliação manual'
+    });else okay=true;
+   }
+  }
+  else if(modal==='cardstatement'){
+   const card=data.credit_cards.find(c=>c.id===context);
+   if(!card||card.owner_id!==uid)throw Error('Somente o titular pode informar o valor da fatura');
+   const statementMonth=form.statementMonth||month;
+   if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(statementMonth))throw Error('Mês da fatura inválido');
+   const paid=data.card_payments.filter(p=>p.card_id===context&&p.statement_month===statementMonth).reduce((sum,p)=>sum+p.amount_cents,0);
+   if(amount<paid)throw Error('O valor real não pode ser inferior ao que já foi pago da fatura');
+   if(db){
+    const r=await db.rpc('set_card_statement_total',{
+     p_card_id:context,p_statement_month:statementMonth,p_actual_amount_cents:amount,p_notes:form.notes||''
+    });
+    if(r.error)throw Error(r.error.message);
+    await refresh();saveNotice('Valor real da fatura salvo. O detalhamento não será somado duas vezes.');okay=true;
+   }else{
+    const record=data.card_statement_totals.find(st=>st.card_id===context&&st.statement_month===statementMonth);
+    if(record)okay=await patch('card_statement_totals',record.id,{actual_amount_cents:amount,notes:form.notes||'',updated_at:new Date().toISOString()});
+    else okay=await create('card_statement_totals',{
+     card_id:context,owner_id:uid,statement_month:statementMonth,actual_amount_cents:amount,notes:form.notes||''
+    });
+   }
+  }
+
   else if(modal==='recurring'){
    if(form.endMonth&&form.endMonth<form.month)throw Error('O fim não pode ser anterior ao início');
    const card=data.credit_cards.find(c=>c.id===form.paymentTarget);
@@ -146,7 +197,7 @@ export default function App(){
    }
   }
   else if(modal==='payment'){
-    const card=data.credit_cards.find(c=>c.id===context);const due=cardInvoice(context,form.month,data.transactions,data.card_payments);if(!card)throw Error('Cartão inválido');if(amount>due.outstanding)throw Error('Valor excede o saldo pendente da fatura');okay=await create('card_payments',{card_id:context,owner_id:uid,account_id:form.paymentTarget,statement_month:form.month,amount_cents:amount,paid_at:form.date});
+    const card=data.credit_cards.find(c=>c.id===context);const due=cardInvoice(context,form.month,data.transactions,data.card_payments,data.card_statement_totals);if(!card)throw Error('Cartão inválido');if(amount>due.outstanding)throw Error('Valor excede o saldo pendente da fatura');okay=await create('card_payments',{card_id:context,owner_id:uid,account_id:form.paymentTarget,statement_month:form.month,amount_cents:amount,paid_at:form.date});
   }
   if(okay)setModal(null)
  }catch(err){saveNotice(err instanceof Error?err.message:'Falha inesperada')}finally{setBusy(false)}};
@@ -189,7 +240,7 @@ export default function App(){
  const metrics=useMemo(()=>totals(transactions,month),[transactions,month]);
  const alerts=useMemo(()=>generateAlerts(data,view,uid,month),[data,view,uid,month]);
  const projections=useMemo(()=>protectedProjection(data,view,uid,month,12),[data,view,uid,month]);
- const accountSum=accounts.reduce((sum,a)=>sum+accountBalance(a,data.transactions,data.card_payments),0);
+ const accountSum=accounts.reduce((sum,a)=>sum+accountBalance(a,data.transactions,data.card_payments,data.account_balance_adjustments),0);
  const chartData=Array.from({length:6},(_,i)=>{const m=monthShift(month,i-5);const v=totals(transactions,m);return {mes:monthName(m),Receitas:Math.round(v.income/100),Despesas:Math.round(v.expense/100)}});
  const categoryChart=categories.map(category=>({name:category,value:Math.round(transactions.filter(t=>t.type==='expense'&&isoMonth(t.due_date)===month&&t.category===category).reduce((s,t)=>s+t.amount_cents,0)/100)})).filter(c=>c.value>0).sort((a,b)=>b.value-a.value);
  const projectedMonth=projections[0]?.balanceCents||0;
