@@ -39,6 +39,21 @@ export function cardInvoice(cardId:string,month:string,txs:Tx[],payments:CardPay
 export function cardStatementAdjustment(cardId:string,month:string,data:Tables){
  return cardInvoice(cardId,month,data.transactions,data.card_payments,data.card_statement_totals).difference;
 }
+/** Usa a fatura oficial também nos indicadores mensais e comparativos.
+ * A parcela sem detalhamento não é lançada como transação fictícia. */
+export function adjustedMonthlyTotals(data:Tables,view:'all'|'mine'|'shared',uid:string,month:string){
+ const txs=visible(data.transactions,view,uid);
+ const base=totals(txs,month);
+ const cards=visible(data.credit_cards,view,uid);
+ const statementAdjustment=cards.reduce((sum,card)=>{
+  const record=data.card_statement_totals.find(st=>st.card_id===card.id&&st.statement_month===month);
+  if(!record)return sum;
+  const detailed=txs.filter(t=>t.card_id===card.id&&isoMonth(t.due_date)===month&&t.type==='expense')
+   .reduce((part,t)=>part+t.amount_cents,0);
+  return sum+record.actual_amount_cents-detailed;
+ },0);
+ return {...base,expense:base.expense+statementAdjustment,statementAdjustment};
+}
 export type InstallmentAmountMode='total'|'installment';
 export function installmentSummary(inputCents:number,n:number,mode:InstallmentAmountMode){
  if(!Number.isSafeInteger(n)||n<1)throw Error('Informe uma quantidade inteira e positiva de parcelas');
