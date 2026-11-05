@@ -1,6 +1,6 @@
-import type {Budget, Card, MoneyType, Scope, Tables, Tx} from './types';
+import type {Budget, MoneyType, Scope, Tables, Tx} from './types';
 import {
-  activeCardLimit,cents,dueDate,invoiceMonthForPurchase,isoMonth,monthShift,
+  activeCardLimit,dueDate,invoiceMonthForPurchase,isoMonth,monthShift,
   recurringDueDateForCharge,visible
 } from './finance';
 
