@@ -1,6 +1,6 @@
 import {describe,it,expect} from 'vitest';
 import {blankData,type Tables,type Budget,type Tx,type Recurring,type Card} from '../src/types';
-import {effectiveCategoryBudgets,expectedMonthlyRows,protectedProjection,simulatePurchase,spendingInsights} from '../src/planning';
+import {effectiveCategoryBudgets,expectedMonthlyRows,protectedProjection,projectedWithCarryForward,simulatePurchase,spendingInsights} from '../src/planning';
 import {generateAlerts} from '../src/finance';
 
 const uid='u1',house='home';
@@ -83,6 +83,47 @@ describe('planejamento protegido',()=>{
   const data:Tables={...blankData,card_spending_limits:[{id:'cap',owner_id:uid,effective_month:'2026-11',amount_cents:200000}]};
   expect(protectedProjection(data,'all',uid,'2026-11',1)[0].cardReserveCents).toBe(200000);
   expect(protectedProjection(data,'mine',uid,'2026-11',1)[0].cardReserveCents).toBe(0);
+ });
+});
+
+describe('saldo projetado acumulado entre meses',()=>{
+ it('dezembro sobra R$ 1.000, janeiro sobra R$ 80: janeiro acumulado R$ 1.080',()=>{
+  const data:Tables={...blankData,transactions:[
+   tx('dec-income','2026-12','Salário',100000,{type:'income'}),
+   tx('jan-income','2027-01','Renda extra',8000,{type:'income'})
+  ]};
+  const december=projectedWithCarryForward(data,'all',uid,'2026-12',2,'2026-11');
+  expect(december.map(m=>m.balanceCents)).toEqual([100000,8000]);
+  expect(december.map(m=>m.cumulativeCents)).toEqual([100000,108000]);
+  const january=projectedWithCarryForward(data,'all',uid,'2027-01',1,'2026-11');
+  expect(january[0].balanceCents).toBe(8000);
+  expect(january[0].cumulativeCents).toBe(108000);
+ });
+ it('inclui déficits negativos dos meses anteriores no saldo acumulado',()=>{
+  const data:Tables={...blankData,transactions:[
+   tx('income','2026-12','Salário',100000,{type:'income'}),
+   tx('expense','2027-01','Moradia',40000)
+  ]};
+  const january=projectedWithCarryForward(data,'all',uid,'2027-01',1,'2026-12')[0];
+  expect(january.balanceCents).toBe(-40000);
+  expect(january.cumulativeCents).toBe(60000);
+ });
+ it('aplica as reservas orçamentárias mês a mês ao transportar o saldo',()=>{
+  const data:Tables={...blankData,
+   recurring_rules:[rule('salary','income','Salário',150000)],
+   category_budgets:[budget('floor','2026-11','Moradia',120000)]
+  };
+  const january=projectedWithCarryForward(data,'all',uid,'2027-01',1,'2026-11')[0];
+  expect(january.balanceCents).toBe(30000);
+  expect(january.cumulativeCents).toBe(90000);
+ });
+ it('não adiciona automaticamente o saldo das contas bancárias ao saldo projetado',()=>{
+  const data:Tables={...blankData,accounts:[{id:'bank',owner_id:uid,household_id:null,scope:'private',
+   name:'Conta',kind:'Corrente',opening_balance_cents:500000}],
+   transactions:[tx('income','2026-12','Salário',100000,{type:'income'})]
+  };
+  const result=projectedWithCarryForward(data,'all',uid,'2026-12',1,'2026-12');
+  expect(result[0].cumulativeCents).toBe(100000);
  });
 });
 
