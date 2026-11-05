@@ -29,14 +29,23 @@
 
 **Migrações:** `006_account_balance_reconciliation.sql` e `007_card_statement_actual_totals.sql` já estão aplicadas no Supabase pessoal. As duas tabelas têm RLS e as operações de conciliação usam funções `SECURITY INVOKER`.
 
+## Saldos iniciais e responsabilidade do casal
+
+- Os valores iniciais das contas são uma **fotografia bancária já com os salários e o apartamento pagos em novembro de 2026**.
+- Os lançamentos de novembro referentes aos dois salários e ao apartamento foram conservados e marcados no campo `transactions.in_opening_balance`. Eles seguem no histórico, mas não entram outra vez como novas entradas ou saídas da projeção.
+- O saldo de fechamento projetado de novembro é calculado somando os saldos atuais da casa às receitas ainda previstas e subtraindo as despesas ainda a pagar, incluindo os valores reais das faturas do mês.
+- Quando uma despesa ligada a uma conta já foi marcada como paga, ou uma fatura já foi parcialmente paga, essas movimentações não são descontadas novamente da projeção.
+- O teto dos cartões está vinculado à casa por `card_spending_limits.household_id` e é o mesmo para os dois integrantes.
+- `008_shared_household_and_opening_balance.sql` amplia as permissões exclusivamente à casa autenticada e `009_shared_recurring_materialization.sql` permite gerar recorrências por qualquer membro da mesma casa. Os ajustes nos registros existentes foram aplicados pontualmente no banco, sem gravar identificadores pessoais no repositório.
+
 ## Premissas importantes
 
 - Um **orçamento por categoria de R$ 800** gera pelo menos R$ 800 de despesa planejada em cada mês, salvo mudança programada. Se já foram reconhecidos R$ 500 naquela categoria, só se adicionam R$ 300 de reserva.
 - O limite de cartão não é uma despesa obrigatória: é uma **reserva de planejamento**. Como a alocação futura entre conta e cartão nem sempre é conhecida, o aplicativo usa o histórico de meios de pagamento para reduzir possíveis sobreposições. Revise os resultados antes de tomar decisões.
-- O **resultado acumulado** soma movimentos projetados desde o mês selecionado e **não representa saldo em conta**. Cadastre salários e demais recebimentos futuros para tornar as simulações mais úteis.
+- O **saldo projetado acumulado** parte dos saldos atuais de todas as contas da casa e acrescenta o fluxo de caixa ainda não refletido nesses saldos, transportando a diferença entre os meses. Movimentos já liquidados no saldo inicial não são repetidos.
 - Tendências históricas usam meses encerrados; meses sem registros não podem ser interpretados automaticamente como ausência de despesas.
 - O simulador não insere transações reais nem reservas no banco.
-- Limites consolidados de cartões são individuais e incluem apenas cartões acessíveis ao titular; não revelam cartões privados de outro integrante.
+- Todas as contas, cartões, despesas e limites do casal são compartilhados entre os membros da mesma casa. O acesso não concede dados a usuários externos; ambos podem atualizar saldos, faturas e regras compartilhados.
 - O indicador de margem mensal é orientativo, não avaliação profissional de crédito ou investimento.
 
 ## Código e implantação
