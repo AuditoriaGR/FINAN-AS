@@ -5,6 +5,7 @@ import type {User} from '@supabase/supabase-js';
 import {db,configured} from './supabase';
 import {demoData,demoHousehold,demoUser} from './demo';
 import FixedCommitments from './FixedCommitments';
+import AccountsOverview from './AccountsOverview';
 import CardSpendingBudget from './CardSpendingBudget';
 import FuturePlanning from './FuturePlanning';
 import SpendingInsightsPanel from './SpendingInsightsPanel';
@@ -334,24 +335,11 @@ export default function App(){
     {!effectiveBudgets.length&&<section className="panel"><Empty text="Ainda não há limites de categoria válidos para este mês. Cadastre um para proteger sua projeção financeira." action={()=>open('budget')}/></section>}
    </>}
   {page==='goals'&&<><div className="section-intro"><p>Transforme planos em metas e registre os aportes de cada pessoa.</p><button className="primary" onClick={()=>open('goal')}><Plus size={17}/> Nova meta</button></div><div className="card-grid">{goals.map(g=>{const x=goalProgress(g,data.goal_contributions);return <section className="panel goal-card" key={g.id}><div className="goal-symbol"><Target size={22}/></div><div className="line-between"><h3>{g.name}</h3><Tag scope={g.scope}/></div><p>Prazo: {g.deadline?mDate(g.deadline):'Sem prazo'}</p><div className="goal-values"><strong>{money(x.saved)}</strong><span>de {money(g.target_cents)}</span></div><Meter percent={x.percent}/><div className="line-between goal-foot"><small>{x.percent}% alcançado · faltam {money(x.remaining)}</small><button className="secondary small" onClick={()=>open('contribution',g.id)}><Plus size={15}/> Aporte</button></div>{g.owner_id===uid&&<button className="subtle-delete" onClick={()=>void del('financial_goals',g.id)}>Excluir meta</button>}</section>})}</div>{!goals.length&&<section className="panel"><Empty text="Defina sua primeira meta financeira." action={()=>open('goal')}/></section>}</>}
-  {page==='accounts'&&<>
-  <div className="section-intro"><p>Confira o saldo atual no banco e ajuste quando necessário, sem lançar receitas ou despesas fictícias. A diferença fica registrada no histórico de conciliações.</p>
-   <button className="primary" onClick={()=>open('account')}><Plus size={17}/> Nova conta</button></div>
-  <div className="card-grid">{accounts.map(a=>{
-   const current=accountBalance(a,data.transactions,data.card_payments,data.account_balance_adjustments);
-   const last=data.account_balance_adjustments.filter(j=>j.account_id===a.id).sort((x,y)=>y.created_at.localeCompare(x.created_at))[0];
-   return <section className="panel account-card" key={a.id}>
-    <div className="line-between"><IconBadge><Wallet size={20}/></IconBadge><Tag scope={a.scope}/></div>
-    <h3>{a.name}</h3><p>{a.kind}</p>
-    <small>Saldo atual calculado</small><div className="account-value">{money(current)}</div>
-    <small>Saldo inicial histórico: {money(a.opening_balance_cents)}</small>
-    {last&&<p className="small-hint">Última conciliação: {money(last.balance_after_cents)} · {new Date(last.created_at).toLocaleDateString('pt-BR')}</p>}
-    {(a.owner_id===uid||a.scope==='shared')&&<button className="secondary full" onClick={()=>open('accountbalance',a.id)}>Atualizar saldo atual</button>}
-   </section>
-  })}</div>
-  {!accounts.length&&<section className="panel"><Empty text="Cadastre uma conta para começar." action={()=>open('account')}/></section>}
- </>}
- {page==='cards'&&<>
+  {page==='accounts'&&<AccountsOverview
+   accounts={accounts} data={data} onNew={()=>open('account')}
+   onUpdateBalance={id=>open('accountbalance',id)}
+  />}
+  {page==='cards'&&<>
   <div className="section-intro"><p>Informe o valor real de cada fatura para começar o controle, mesmo sem todos os lançamentos antigos. À medida que cadastrar as compras, a diferença será ajustada automaticamente.</p>
    <button className="primary" onClick={()=>open('card')}><Plus size={17}/> Novo cartão</button></div>
   <div className="card-grid">{cards.map(c=>{
