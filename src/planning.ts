@@ -1,6 +1,6 @@
 import type {Budget, MoneyType, Scope, Tables, Tx} from './types';
 import {
-  activeCardLimit,dueDate,invoiceMonthForPurchase,isoMonth,monthShift,
+  activeCardLimit,dueDate,invoiceMonthForPurchase,isoMonth,monthShift,today,
   recurringDueDateForCharge,visible
 } from './finance';
 
@@ -117,6 +117,26 @@ export function protectedProjection(data:Tables,view:PlanningView,uid:string,sta
  });
 }
 
+
+/** Projeção com saldo transportado entre meses.
+ * Mudar a visualização de dezembro para janeiro não zera o acumulado:
+ * o resultado de janeiro se soma ao fechamento projetado de dezembro.
+ * O marco inicial padrão é o mês atual, nunca o saldo bancário real.
+ */
+export function projectedWithCarryForward(
+ data:Tables,view:PlanningView,uid:string,selectedMonth:string,months=12,
+ referenceMonth=today().slice(0,7)
+):PlannedMonth[]{
+ if(!/^\d{4}-(0[1-9]|1[0-2])$/.test(selectedMonth)||
+    !/^\d{4}-(0[1-9]|1[0-2])$/.test(referenceMonth))throw Error('Mês de projeção inválido');
+ if(!Number.isSafeInteger(months)||months<1)throw Error('Período de projeção inválido');
+ const ordinal=(m:string)=>Number(m.slice(0,4))*12+Number(m.slice(5,7));
+ const anchor=selectedMonth<referenceMonth?selectedMonth:referenceMonth;
+ const skip=ordinal(selectedMonth)-ordinal(anchor);
+ const full=protectedProjection(data,view,uid,anchor,skip+months);
+ return full.slice(skip);
+}
+
 export type PurchaseScenario={
  amountCents:number;amountMode:'total'|'installment';installments:number;
  purchaseMonth:string;purchaseDay:number;category:string;cardId:string|null
@@ -167,7 +187,7 @@ export function simulatePurchase(data:Tables,view:PlanningView,uid:string,start:
    installment_group_id:'simulation-only',installment_number:i+1,installment_total:n,recurring_rule_id:null
   });
  }
- const baseline=protectedProjection(data,view,uid,start,months);
+ const baseline=projectedWithCarryForward(data,view,uid,start,months);
  // A simulação é uma NOVA compra: não pode usar como crédito a diferença
  // de uma fatura oficial já confirmada pelo usuário. Preservamos a fatura
  // como fotografia histórica e aumentamos apenas o cenário hipotético.
@@ -177,7 +197,7 @@ export function simulatePurchase(data:Tables,view:PlanningView,uid:string,start:
   return added?{...st,actual_amount_cents:st.actual_amount_cents+added}:st;
  });
  const simulatedData={...data,transactions:[...data.transactions,...created],card_statement_totals:simulatedStatements};
- const withPurchase=protectedProjection(simulatedData,view,uid,start,months);
+ const withPurchase=projectedWithCarryForward(simulatedData,view,uid,start,months);
  const impactCents=withPurchase.reduce((s,r,i)=>s+Math.max(0,r.expenseCents-baseline[i].expenseCents),0);
  const monthsWithDeficit=withPurchase.filter(r=>r.balanceCents<0).map(r=>r.month);
  const monthsOverCardCap=withPurchase.filter(r=>r.cardLimitCents!==null&&r.cardCommittedCents>r.cardLimitCents).map(r=>r.month);
