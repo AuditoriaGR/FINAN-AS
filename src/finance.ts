@@ -1,4 +1,4 @@
-import type { Account, Budget, CardPayment, Contribution, Goal, Scope, Tables, Tx } from './types';
+import type { Account, Budget, Card, CardPayment, Contribution, Goal, Recurring, Scope, Tables, Tx } from './types';
 export const money=(cents:number)=>new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(cents/100);
 export const cents=(value:string | number)=>{
  const raw=String(value).trim();
@@ -41,5 +41,51 @@ export function installmentPlan(amountCents:number,n:number,startingMonth:string
  return Array.from({length:n},(_,i)=>({amount_cents:base+(i<rest?1:0),due_date:dueDate(monthShift(startingMonth,i),day),installment_number:i+1,installment_total:n}));
 }
 export function budgetForView(budgets:Budget[],view:'all'|'mine'|'shared',uid:string,month:string){return visible(budgets,view,uid).filter(b=>b.month===month)}
-export function forecast(data:Tables,view:'all'|'mine'|'shared',uid:string,start:string,months=12){const txs=visible(data.transactions,view,uid),rules=visible(data.recurring_rules,view,uid);return Array.from({length:months},(_,i)=>{const month=monthShift(start,i),base=totals(txs,month);let income=base.income,expense=base.expense;rules.filter(r=>r.is_active!==false&&r.start_month<=month&&(!r.end_month||r.end_month>=month)).forEach(r=>{const exists=txs.some(t=>t.recurring_rule_id===r.id&&inMonth(t,month));if(!exists){if(r.type==='income')income+=r.amount_cents;else expense+=r.amount_cents}});return {month,short:monthName(month),income,expense,balance:income-expense}})}
+/** Vencimento previsto para uma cobrança feita no mês de referência.
+ * Cartão: usa fechamento e vencimento, sem confundir mês da compra com mês da fatura.
+ * Para uma regra compartilhada com cartão privado invisível ao segundo integrante,
+ * recupera o deslocamento de uma cobrança compartilhada anterior, quando disponível.
+ */
+export function recurringDueDateForCharge(rule:Recurring,chargeMonth:string,cards:Card[],txs:Tx[]=[]){
+ const chargeDate=dueDate(chargeMonth,rule.day_of_month);
+ if(!rule.card_id)return chargeDate;
+ const card=cards.find(c=>c.id===rule.card_id);
+ if(card)return dueDate(invoiceMonthForPurchase(chargeDate,card.closing_day,card.due_day),card.due_day);
+ const previous=txs.find(t=>t.recurring_rule_id===rule.id&&t.card_id===rule.card_id);
+ if(previous){
+  const [dy,dm]=isoMonth(previous.due_date).split('-').map(Number);
+  const [cy,cm]=isoMonth(previous.transaction_date).split('-').map(Number);
+  return dueDate(monthShift(chargeMonth,(dy*12+dm)-(cy*12+cm)),Number(previous.due_date.slice(8,10)));
+ }
+ // Não exibe a identidade do cartão privado de outro integrante.
+ // Antes da primeira cobrança, esta estimativa é pelo mês da compra.
+ return chargeDate;
+}
+export function forecast(data:Tables,view:'all'|'mine'|'shared',uid:string,start:string,months=12){
+ const txs=visible(data.transactions,view,uid);
+ const rules=visible(data.recurring_rules,view,uid);
+ const cards=visible(data.credit_cards,view,uid);
+ return Array.from({length:months},(_,i)=>{
+  const month=monthShift(start,i);
+  const base=totals(txs,month);
+  let income=base.income,expense=base.expense;
+  for(const r of rules){
+   if(r.is_active===false)continue;
+   // O vencimento da fatura pode cair até dois meses após a cobrança.
+   const chargeMonths=r.card_id?[month,monthShift(month,-1),monthShift(month,-2)]:[month];
+   for(const chargeMonth of chargeMonths){
+    if(r.start_month>chargeMonth||(r.end_month&&r.end_month<chargeMonth))continue;
+    const due=recurringDueDateForCharge(r,chargeMonth,cards,txs);
+    if(isoMonth(due)!==month)continue;
+    // Um lançamento já criado faz parte do realizado e não deve ser previsto outra vez.
+    const exists=txs.some(t=>t.recurring_rule_id===r.id&&isoMonth(t.transaction_date)===chargeMonth);
+    if(!exists){
+     if(r.type==='income')income+=r.amount_cents;
+     else expense+=r.amount_cents;
+    }
+   }
+  }
+  return {month,short:monthName(month),income,expense,balance:income-expense};
+ });
+}
 export function generateAlerts(data:Tables,view:'all'|'mine'|'shared',uid:string,month:string){const txs=visible(data.transactions,view,uid),res:{kind:'danger'|'warn'|'info',title:string,detail:string}[]=[];budgetForView(data.category_budgets,view,uid,month).forEach(b=>{const st=budgetStatus(b,txs);if(st.percent>=80)res.push({kind:st.percent>=100?'danger':'warn',title:`${b.category}: ${st.percent}% do orçamento (${st.percent>=100?'limite excedido':st.percent>=90?'atenção 90%':'atenção 80%'})`,detail:st.remaining<0?`Excedido em ${money(-st.remaining)}`:`Restante: ${money(st.remaining)}`})}); const near=new Date();near.setDate(near.getDate()+7);const future=`${near.getFullYear()}-${String(near.getMonth()+1).padStart(2,'0')}-${String(near.getDate()).padStart(2,'0')}`;txs.filter(t=>t.type==='expense'&&!t.card_id&&!t.paid_at&&t.due_date<=future).forEach(t=>res.push({kind:t.due_date<today()?'danger':'warn',title:t.due_date<today()?'Despesa vencida':'Próximo vencimento',detail:`${t.description} · ${money(t.amount_cents)} · ${t.due_date.split('-').reverse().join('/')}`}));visible(data.credit_cards,view,uid).forEach(card=>{const debt=cardInvoice(card.id,month,data.transactions,data.card_payments).outstanding;const due=dueDate(month,card.due_day);if(debt>0&&due<=future)res.push({kind:due<today()?'danger':'warn',title:due<today()?'Fatura vencida':'Fatura próxima do vencimento',detail:`${card.name} · ${money(debt)} · ${due.split('-').reverse().join('/')}`})});const projected=forecast(data,view,uid,month,3);if(projected.some(m=>m.balance<0))res.push({kind:'warn',title:'Mês com fluxo negativo',detail:'A previsão indica despesas superiores às receitas em pelo menos um dos próximos 3 meses.'});visible(data.financial_goals,view,uid).forEach(g=>{const p=goalProgress(g,data.goal_contributions);if(g.deadline&&g.deadline<today()&&p.remaining>0)res.push({kind:'warn',title:`Meta atrasada: ${g.name}`,detail:`Faltam ${money(p.remaining)} para concluir.`})});return res}
