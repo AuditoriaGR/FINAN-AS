@@ -47,10 +47,23 @@ export function expectedMonthlyRows(data:Tables,view:PlanningView,uid:string,mon
    if(r.start_month>chargeMonth||(r.end_month&&r.end_month<chargeMonth))continue;
    const due=recurringDueDateForCharge(r,chargeMonth,cards,txs);
    if(isoMonth(due)!==month)continue;
+   // Uma fatura real informada manualmente já cobre o total dessas cobranças.
+   if(r.card_id&&data.card_statement_totals.some(st=>st.card_id===r.card_id&&st.statement_month===month))continue;
    if(txs.some(t=>t.recurring_rule_id===r.id&&isoMonth(t.transaction_date)===chargeMonth))continue;
    rows.push({category:r.category,type:r.type,scope:r.scope,owner_id:r.owner_id,
      household_id:r.household_id,card_id:r.card_id??null,amount_cents:r.amount_cents});
   }
+ }
+ // Diferença entre fatura oficial e compras já detalhadas; pode ser negativa
+ // quando o cadastro de lançamentos supera o total informado no banco.
+ for(const card of cards){
+  const record=data.card_statement_totals.find(st=>st.card_id===card.id&&st.statement_month===month);
+  if(!record)continue;
+  const itemized=txs.filter(t=>t.card_id===card.id&&t.type==='expense'&&isoMonth(t.due_date)===month)
+   .reduce((sum,t)=>sum+t.amount_cents,0);
+  const diff=record.actual_amount_cents-itemized;
+  if(diff!==0)rows.push({category:'Fatura sem detalhamento',type:'expense',
+   scope:card.scope,owner_id:card.owner_id,household_id:card.household_id,card_id:card.id,amount_cents:diff});
  }
  return rows;
 }
@@ -197,8 +210,17 @@ export function spendingInsights(data:Tables,view:PlanningView,uid:string,anchor
  const rows=months.map(month=>{
   const entries=txs.filter(t=>isoMonth(t.due_date)===month);
   // Compras feitas no cartão são compromissos reais, mesmo sem 'pago'.
-  const expenseCents=entries.filter(t=>t.type==='expense'&&(!!t.card_id||!!t.paid_at))
+  const recognized=entries.filter(t=>t.type==='expense'&&(!!t.card_id||!!t.paid_at))
     .reduce((s,t)=>s+t.amount_cents,0);
+  // Inclui o saldo oficial das faturas com valor real informado, sem duplicar lançamentos.
+  const visibleCards=visible(data.credit_cards,view,uid);
+  const adjustment=visibleCards.reduce((sum,c)=>{
+   const st=data.card_statement_totals.find(s=>s.card_id===c.id&&s.statement_month===month);
+   if(!st)return sum;
+   const detail=entries.filter(t=>t.type==='expense'&&t.card_id===c.id).reduce((s,t)=>s+t.amount_cents,0);
+   return sum+st.actual_amount_cents-detail;
+  },0);
+  const expenseCents=recognized+adjustment;
   const incomeCents=entries.filter(t=>t.type==='income'&&!!t.paid_at).reduce((s,t)=>s+t.amount_cents,0);
   return {month,expenseCents,incomeCents};
  });
