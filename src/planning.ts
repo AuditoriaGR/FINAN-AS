@@ -1,6 +1,6 @@
 import type {Budget, MoneyType, Scope, Tables, Tx} from './types';
 import {
-  activeCardLimit,dueDate,invoiceMonthForPurchase,isoMonth,monthShift,today,
+  activeCardLimit,accountBalance,dueDate,invoiceMonthForPurchase,isoMonth,monthShift,today,
   recurringDueDateForCharge,visible
 } from './finance';
 
@@ -37,7 +37,7 @@ export function expectedMonthlyRows(data:Tables,view:PlanningView,uid:string,mon
  const txs=visible(data.transactions,view,uid);
  const rules=visible(data.recurring_rules,view,uid);
  const cards=visible(data.credit_cards,view,uid);
- const rows:PlanExpense[]=txs.filter(t=>isoMonth(t.due_date)===month)
+ const rows:PlanExpense[]=txs.filter(t=>isoMonth(t.due_date)===month&&!t.in_opening_balance)
    .map(t=>({category:t.category,type:t.type,scope:t.scope,owner_id:t.owner_id,
      household_id:t.household_id,card_id:t.card_id,amount_cents:t.amount_cents}));
  for(const r of rules){
@@ -134,7 +134,14 @@ export function projectedWithCarryForward(
  const anchor=selectedMonth<referenceMonth?selectedMonth:referenceMonth;
  const skip=ordinal(selectedMonth)-ordinal(anchor);
  const full=protectedProjection(data,view,uid,anchor,skip+months);
- return full.slice(skip);
+ // Opening balances are a current snapshot: salaries and expenses already reflected
+ // there are excluded from expectedMonthlyRows. This is the cash available to carry.
+ const sharedTxs=visible(data.transactions,view,uid);
+ const sharedPayments=data.card_payments.filter(p=>
+   visible(data.credit_cards,view,uid).some(c=>c.id===p.card_id));
+ const startingCents=visible(data.accounts,view,uid).reduce((sum,a)=>
+   sum+accountBalance(a,sharedTxs,sharedPayments,data.account_balance_adjustments),0);
+ return full.slice(skip).map(r=>({...r,cumulativeCents:r.cumulativeCents+startingCents}));
 }
 
 export type PurchaseScenario={
@@ -199,7 +206,7 @@ export function simulatePurchase(data:Tables,view:PlanningView,uid:string,start:
  const simulatedData={...data,transactions:[...data.transactions,...created],card_statement_totals:simulatedStatements};
  const withPurchase=projectedWithCarryForward(simulatedData,view,uid,start,months);
  const impactCents=withPurchase.reduce((s,r,i)=>s+Math.max(0,r.expenseCents-baseline[i].expenseCents),0);
- const monthsWithDeficit=withPurchase.filter(r=>r.balanceCents<0).map(r=>r.month);
+ const monthsWithDeficit=withPurchase.filter(r=>r.cumulativeCents<0).map(r=>r.month);
  const monthsOverCardCap=withPurchase.filter(r=>r.cardLimitCents!==null&&r.cardCommittedCents>r.cardLimitCents).map(r=>r.month);
  const categoryOverages:{month:string;category:string;excessCents:number}[]=[];
  for(const row of withPurchase){
@@ -212,7 +219,8 @@ export function simulatePurchase(data:Tables,view:PlanningView,uid:string,start:
    if(newExcess>previousExcess)categoryOverages.push({month:row.month,category:input.category,excessCents:newExcess});
   }
  }
- const missingIncome=withPurchase.some(r=>!r.hasIncome);
+ const missingIncome=withPurchase.every(r=>r.incomeCents===0)&&
+   baseline.every(r=>r.cumulativeCents<=0);
  const verdict:PurchaseImpact['verdict']=missingIncome?'insufficient'
   :monthsWithDeficit.length||monthsOverCardCap.length||categoryOverages.length?'tight':extendsBeyondHorizon?'partial':'fits';
  return {baseline,withPurchase,totalPurchaseCents,impactCents,
