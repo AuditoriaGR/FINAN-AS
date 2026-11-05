@@ -59,7 +59,7 @@ export default function FixedCommitments({rules,transactions,cards,uid,month,onN
      <div className="fixed-tags"><span className={`tag ${r.scope}`}>{r.scope==='shared'?'Casal':'Individual'}</span><span className={`status ${r.is_active===false?'pending':'paid'}`}>{r.is_active===false?'Pausada':'Ativa'}</span></div>
     </div>
     <div className="fixed-amount"><strong className={kind==='income'?'positive':''}>{kind==='income'?'+':'−'} {money(actual?.amount_cents??r.amount_cents)}</strong><small>{r.amount_mode==='variable'?(actual?'valor deste mês':'estimativa mensal'):'por mês'}</small></div>
-    {r.owner_id===uid&&<div className="fixed-actions">
+    {(r.owner_id===uid||r.scope==='shared')&&<div className="fixed-actions">
      {r.amount_mode==='variable'&&<button className="secondary small" onClick={()=>onAdjustFixed(r)}>Informar valor do mês</button>}
      <button className="secondary small" onClick={()=>onEditFixed(r.id)}>Editar regra</button>
      <button className="secondary small" onClick={()=>onToggleFixed(r)}>{r.is_active===false?'Retomar':'Pausar'}</button>
