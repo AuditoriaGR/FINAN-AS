@@ -15,6 +15,20 @@
 - **Tendências e economia:** despesas realizadas nos últimos seis meses completos, comparação por categorias revisáveis, hipóteses ilustrativas de redução de 10%, compromissos fixos para revisão e indicador preliminar da margem projetada.
 - Exportação CSV e interface responsiva.
 
+## Conciliação inicial: saldo real e fatura do banco
+
+- **Contas → Atualizar saldo atual:** informe o saldo mostrado pelo banco. A atualização salva uma diferença auditável em `account_balance_adjustments`, sem editar o saldo inicial, apagar lançamentos ou criar receitas/despesas fictícias. O cálculo posterior continua considerando novos pagamentos e recebimentos.
+- **Cartões → Informar valor real da fatura:** escolha o mês da fatura, digite o total oficial, inclusive compras ainda sem detalhamento, e salve. Este valor **substitui** o total calculado dos lançamentos daquele mês; não é somado a ele.
+- O painel exibe `valor detalhado`, `valor real` e `diferença ainda sem detalhamento`. Quando compras antigas forem cadastradas, a diferença é reduzida automaticamente e a fatura real não aumenta.
+- O valor real atualizado participa do orçamento global de cartões, do planejamento protegido de 12 meses e dos indicadores mensais. Quando a fatura registrada ultrapassa as compras cadastradas, a diferença fica separada como `Fatura sem detalhamento`, sem criar lançamento inventado ou atribuir uma categoria sem informação.
+- **Somente o responsável** pela conta pode conciliar o saldo e o responsável pelo cartão pode confirmar a fatura. O segundo integrante pode visualizar os dados de contas/cartões compartilhados, mas não alterar valores do responsável. Contas e cartões privados permanecem invisíveis à outra pessoa.
+- A fatura não pode ser fixada em valor inferior aos pagamentos já registrados. Com uma fatura de valor oficial, o pagamento reduz o saldo devido, mas não diminui o gasto do mês.
+- Para uma nova compra *simulada*, o planejamento considera o impacto adicional e não a trata como se já estivesse contida numa fatura informada anteriormente.
+
+**Orientação:** use o valor de **vencimento da fatura do mês selecionado**. Se houver compras em meses anteriores cuja fatura vence neste mês, elas pertencem a essa fatura — não necessariamente ao mês da compra.
+
+**Migrações:** `006_account_balance_reconciliation.sql` e `007_card_statement_actual_totals.sql` já estão aplicadas no Supabase pessoal. As duas tabelas têm RLS e as operações de conciliação usam funções `SECURITY INVOKER`.
+
 ## Premissas importantes
 
 - Um **orçamento por categoria de R$ 800** gera pelo menos R$ 800 de despesa planejada em cada mês, salvo mudança programada. Se já foram reconhecidos R$ 500 naquela categoria, só se adicionam R$ 300 de reserva.
