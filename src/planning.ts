@@ -1,6 +1,6 @@
 import type {Budget, MoneyType, Scope, Tables, Tx} from './types';
 import {
-  activeCardLimit,accountBalance,dueDate,invoiceMonthForPurchase,isoMonth,monthShift,today,
+  activeCardLimit,accountBalancesByPurpose,dueDate,invoiceMonthForPurchase,isoMonth,monthShift,today,
   recurringDueDateForCharge,visible
 } from './finance';
 
@@ -155,9 +155,13 @@ export function projectedWithCarryForward(
  const sharedTxs=visible(data.transactions,view,uid);
  const sharedPayments=data.card_payments.filter(p=>
    visible(data.credit_cards,view,uid).some(c=>c.id===p.card_id));
- const startingCents=visible(data.accounts,view,uid).reduce((sum,a)=>
-   sum+accountBalance(a,sharedTxs,sharedPayments,data.account_balance_adjustments),0);
- return full.slice(skip).map(r=>({...r,cumulativeCents:r.cumulativeCents+startingCents}));
+ const balances=accountBalancesByPurpose(
+   visible(data.accounts,view,uid),sharedTxs,sharedPayments,data.account_balance_adjustments
+ );
+ // Investment accounts (for example CDB) are intentionally not spendable cash.
+ // They remain in the portfolio, but cannot finance projected purchases unless
+ // a redemption is entered explicitly as a future cash movement.
+ return full.slice(skip).map(r=>({...r,cumulativeCents:r.cumulativeCents+balances.availableCents}));
 }
 
 export type PurchaseScenario={
