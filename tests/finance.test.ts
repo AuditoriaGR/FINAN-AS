@@ -3,6 +3,19 @@ import {accountBalance,budgetStatus,cardInvoice,cents,dueDate,forecast,goalProgr
 import {blankData,type Tx} from '../src/types';
 const makeTx=(fields:Partial<Tx>):Tx=>({id:'test',owner_id:'u1',household_id:null,scope:'private',description:'Test',type:'expense',category:'Alimentação',amount_cents:10000,transaction_date:'2026-11-01',due_date:'2026-11-10',paid_at:null,account_id:null,card_id:null,installment_group_id:null,installment_number:null,installment_total:null,recurring_rule_id:null,...fields});
 
+describe('teto mensal compartilhado do casal',()=>{
+ it('o mesmo limite vigente é encontrado por ambos integrantes',()=>{
+  const data={...blankData,household_members:[
+   {household_id:'home',user_id:'u1',role:'owner',display_name:'Rui'},
+   {household_id:'home',user_id:'u2',role:'member',display_name:'Taina'}
+  ],card_spending_limits:[{id:'l',owner_id:'u1',household_id:'home',
+    effective_month:'2026-11',amount_cents:150000}]};
+  expect(activeCardLimit(data,'u1','2026-11')?.amount_cents).toBe(150000);
+  expect(activeCardLimit(data,'u2','2026-11')?.amount_cents).toBe(150000);
+  expect(activeCardLimit(data,'u2','2027-02')?.amount_cents).toBe(150000);
+ });
+});
+
 describe('limite geral de cartões',()=>{
  const cardA={id:'card-a',owner_id:'u1',household_id:null,scope:'private' as const,name:'Cartão A',credit_limit_cents:200000,closing_day:20,due_day:5};
  const cardB={id:'card-b',owner_id:'u1',household_id:'home',scope:'shared' as const,name:'Cartão B',credit_limit_cents:300000,closing_day:15,due_day:20};
