@@ -63,22 +63,54 @@ export default function App(){
  const scopeProps=()=>({owner_id:uid,scope:form.scope||'private',household_id:form.scope==='shared'?household?.id:null});
  const submitModal=async(e:FormEvent)=>{e.preventDefault();if(!modal)return;setBusy(true);let okay=false;const amount=cents(form.amount||'0');try{if(!Number.isSafeInteger(amount)||((modal!=='account')&&amount<=0))throw Error('Informe um valor válido');
   if(modal==='transaction'){
-   const card=data.credit_cards.find(c=>c.id===form.paymentTarget);const count=card?Math.max(1,Number(form.installments||1)):1;
+   const card=data.credit_cards.find(c=>c.id===form.paymentTarget);
+   const count=Number(form.installments||1);
+   if(!Number.isInteger(count)||count<1||count>72)throw Error('Escolha de 1 a 72 parcelas');
+   if(card&&form.type!=='expense')throw Error('Receita não pode ser lançada no cartão de crédito');
    const base={...scopeProps(),description:form.description,type:form.type,category:form.category,transaction_date:form.date||today(),paid_at:card?null:form.paid==='yes'?(form.date||today()):null,account_id:card?null:(form.paymentTarget||null),card_id:card?.id||null,recurring_rule_id:null};
-   if(card&&count>1){const invoiceMonth=invoiceMonthForPurchase(form.date||today(),card.closing_day,card.due_day);const plan=installmentPlan(amount,count,invoiceMonth,card.due_day);const group=crypto.randomUUID();okay=await create('transactions',plan.map(p=>({...base,...p,amount_cents:p.amount_cents,due_date:p.due_date,description:`${form.description} (${p.installment_number}/${count})`,installment_group_id:group})));}
-   else{const due=card?dueDate(invoiceMonthForPurchase(form.date||today(),card.closing_day,card.due_day),card.due_day):(form.due||form.date);okay=await create('transactions',{...base,amount_cents:amount,due_date:due,installment_group_id:null,installment_number:null,installment_total:null})}
+   if(count>1){
+    const firstMonth=card?invoiceMonthForPurchase(form.date||today(),card.closing_day,card.due_day):isoMonth(form.due||form.date);
+    const day=card?card.due_day:Number((form.due||form.date).slice(8,10));
+    const plan=installmentPlan(amount,count,firstMonth,day);const group=crypto.randomUUID();
+    okay=await create('transactions',plan.map((p,i)=>({...base,...p,amount_cents:p.amount_cents,due_date:p.due_date,description:`${form.description} (${p.installment_number}/${count})`,paid_at:!card&&i===0&&form.paid==='yes'?(form.date||today()):null,installment_group_id:group})));
+   }else{const due=card?dueDate(invoiceMonthForPurchase(form.date||today(),card.closing_day,card.due_day),card.due_day):(form.due||form.date);okay=await create('transactions',{...base,amount_cents:amount,due_date:due,installment_group_id:null,installment_number:null,installment_total:null})}
   }else if(modal==='budget')okay=await create('category_budgets',{...scopeProps(),category:form.category,month:form.month,amount_cents:amount});
   else if(modal==='goal')okay=await create('financial_goals',{...scopeProps(),name:form.name,target_cents:amount,deadline:form.deadline||null});
   else if(modal==='contribution')okay=await create('goal_contributions',{goal_id:context,owner_id:uid,amount_cents:amount});
   else if(modal==='account')okay=await create('accounts',{...scopeProps(),name:form.name,kind:form.kind,opening_balance_cents:cents(form.amount||'0')});
   else if(modal==='card')okay=await create('credit_cards',{...scopeProps(),name:form.name,credit_limit_cents:amount,closing_day:Number(form.closing),due_day:Number(form.dueDay)});
-  else if(modal==='recurring')okay=await create('recurring_rules',{...scopeProps(),type:form.type,description:form.description,category:form.category,amount_cents:amount,day_of_month:Number(form.day),account_id:form.paymentTarget||null,start_month:form.month,end_month:form.endMonth||null});
+  else if(modal==='recurring'){
+   if(form.endMonth&&form.endMonth<form.month)throw Error('O fim não pode ser anterior ao início');
+   const changes={...scopeProps(),type:form.type,description:form.description,category:form.category,amount_cents:amount,day_of_month:Number(form.day),account_id:form.paymentTarget||null,start_month:form.month,end_month:form.endMonth||null};
+   okay=context?await patch('recurring_rules',context,changes):await create('recurring_rules',{...changes,is_active:true});
+   if(okay&&db){const r=await db.rpc('materialize_recurring_month',{p_month:month});if(r.error)saveNotice(r.error.message);else await refresh()}
+  }
   else if(modal==='payment'){
     const card=data.credit_cards.find(c=>c.id===context);const due=cardInvoice(context,form.month,data.transactions,data.card_payments);if(!card)throw Error('Cartão inválido');if(amount>due.outstanding)throw Error('Valor excede o saldo pendente da fatura');okay=await create('card_payments',{card_id:context,owner_id:uid,account_id:form.paymentTarget,statement_month:form.month,amount_cents:amount,paid_at:form.date});
   }
   if(okay)setModal(null)
  }catch(err){saveNotice(err instanceof Error?err.message:'Falha inesperada')}finally{setBusy(false)}};
- const materialize=async()=>{const rules=visible(data.recurring_rules,view,uid).filter(r=>r.owner_id===uid);const entries=rules.filter(r=>r.start_month<=month&&(!r.end_month||r.end_month>=month)&&!data.transactions.some(t=>t.recurring_rule_id===r.id&&isoMonth(t.due_date)===month)).map(r=>({owner_id:r.owner_id,household_id:r.household_id,scope:r.scope,description:r.description,type:r.type,category:r.category,amount_cents:r.amount_cents,transaction_date:dueDate(month,r.day_of_month),due_date:dueDate(month,r.day_of_month),paid_at:null,account_id:r.account_id,card_id:null,installment_group_id:null,installment_number:null,installment_total:null,recurring_rule_id:r.id}));if(!entries.length){saveNotice('Nenhuma recorrência nova para este mês.');return}await create('transactions',entries)};
+ const materialize=async()=>{
+  if(!db){
+   const owned=data.recurring_rules.filter(r=>r.owner_id===uid&&r.is_active!==false&&r.start_month<=month&&(!r.end_month||r.end_month>=month));
+   const entries=owned.filter(r=>!data.transactions.some(t=>t.recurring_rule_id===r.id&&isoMonth(t.due_date)===month)).map(r=>({owner_id:r.owner_id,household_id:r.household_id,scope:r.scope,description:r.description,type:r.type,category:r.category,amount_cents:r.amount_cents,transaction_date:dueDate(month,r.day_of_month),due_date:dueDate(month,r.day_of_month),paid_at:null,account_id:r.account_id,card_id:null,installment_group_id:null,installment_number:null,installment_total:null,recurring_rule_id:r.id}));
+   if(entries.length)await create('transactions',entries);else saveNotice('As receitas e despesas fixas do mês já estão lançadas.');
+   return;
+  }
+  const r=await db.rpc('materialize_recurring_month',{p_month:month});
+  if(r.error)saveNotice(r.error.message);else{await refresh();saveNotice(Number(r.data)>0?`${r.data} lançamento(s) fixo(s) criado(s).`:'O mês já está atualizado.')}
+ };
+ useEffect(()=>{
+  if(!db||!user||!household)return;
+  let current=true;
+  void (async()=>{
+   const r=await db.rpc('materialize_recurring_month',{p_month:month});
+   if(current&&r.error)saveNotice(`Não foi possível gerar as contas fixas: ${r.error.message}`);
+   if(current&&!r.error&&Number(r.data)>0)await refresh();
+  })();
+  return()=>{current=false};
+ },[user?.id,household?.id,month,refresh]);
+
  const transactions=useMemo(()=>visible(data.transactions,view,uid),[data.transactions,view,uid]);
  const accounts=useMemo(()=>visible(data.accounts,view,uid),[data.accounts,view,uid]);
  const cards=useMemo(()=>visible(data.credit_cards,view,uid),[data.credit_cards,view,uid]);
