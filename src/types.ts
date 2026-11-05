@@ -1,5 +1,6 @@
 export type Scope = 'private' | 'shared';
 export type MoneyType = 'income' | 'expense';
+export type BalanceAdjustment = {id:string;account_id:string;owner_id:string;delta_cents:number;balance_before_cents:number;balance_after_cents:number;reason:string;created_at:string};
 export type Account = { id: string; owner_id: string; household_id: string | null; scope: Scope; name: string; kind: string; opening_balance_cents: number; created_at?: string };
 export type Card = { id: string; owner_id: string; household_id: string | null; scope: Scope; name: string; credit_limit_cents: number; closing_day: number; due_day: number; created_at?: string };
 export type Tx = { id: string; owner_id: string; household_id: string | null; scope: Scope; description: string; type: MoneyType; category: string; amount_cents: number; transaction_date: string; due_date: string; paid_at: string | null; account_id: string | null; card_id: string | null; installment_group_id: string | null; installment_number: number | null; installment_total: number | null; recurring_rule_id: string | null; created_at?: string };
@@ -11,6 +12,6 @@ export type CardSpendingLimit = {id:string;owner_id:string;effective_month:strin
 export type CardPayment = {id:string;card_id:string;owner_id:string;account_id:string;statement_month:string;amount_cents:number;paid_at:string};
 export type Member = {household_id:string;user_id:string;role:string;display_name:string;joined_at?:string};
 export type Household = {id:string;name:string;created_by:string};
-export type Tables = {card_spending_limits:CardSpendingLimit[];accounts:Account[];credit_cards:Card[];transactions:Tx[];category_budgets:Budget[];financial_goals:Goal[];goal_contributions:Contribution[];recurring_rules:Recurring[];card_payments:CardPayment[];household_members:Member[]};
-export const blankData:Tables={card_spending_limits:[],accounts:[],credit_cards:[],transactions:[],category_budgets:[],financial_goals:[],goal_contributions:[],recurring_rules:[],card_payments:[],household_members:[]};
+export type Tables = {account_balance_adjustments:BalanceAdjustment[];card_spending_limits:CardSpendingLimit[];accounts:Account[];credit_cards:Card[];transactions:Tx[];category_budgets:Budget[];financial_goals:Goal[];goal_contributions:Contribution[];recurring_rules:Recurring[];card_payments:CardPayment[];household_members:Member[]};
+export const blankData:Tables={account_balance_adjustments:[],card_spending_limits:[],accounts:[],credit_cards:[],transactions:[],category_budgets:[],financial_goals:[],goal_contributions:[],recurring_rules:[],card_payments:[],household_members:[]};
 export const categories=['Moradia','Condomínio','Energia elétrica','Água e esgoto','Gás','Internet','Telefonia','Supermercado','Alimentação','Transporte','Saúde','Educação','Lazer','Assinaturas','Compras','Viagem','Investimentos','Outros','Salário','Renda extra'];
