@@ -37,7 +37,7 @@ export function expectedMonthlyRows(data:Tables,view:PlanningView,uid:string,mon
  const txs=visible(data.transactions,view,uid);
  const rules=visible(data.recurring_rules,view,uid);
  const cards=visible(data.credit_cards,view,uid);
- const rows:PlanExpense[]=txs.filter(t=>isoMonth(t.due_date)===month&&!t.in_opening_balance)
+ const rows:PlanExpense[]=txs.filter(t=>isoMonth(t.due_date)===month&&!t.in_opening_balance&&!(t.paid_at&&t.account_id))
    .map(t=>({category:t.category,type:t.type,scope:t.scope,owner_id:t.owner_id,
      household_id:t.household_id,card_id:t.card_id,amount_cents:t.amount_cents}));
  for(const r of rules){
@@ -53,6 +53,16 @@ export function expectedMonthlyRows(data:Tables,view:PlanningView,uid:string,mon
    rows.push({category:r.category,type:r.type,scope:r.scope,owner_id:r.owner_id,
      household_id:r.household_id,card_id:r.card_id??null,amount_cents:r.amount_cents});
   }
+ }
+ // Pagamentos de fatura saíram das contas e já reduzem o saldo bancário
+ // atual. Portanto, não são exigíveis novamente na previsão de caixa.
+ const visibleAccounts=new Set(visible(data.accounts,view,uid).map(a=>a.id));
+ for(const card of cards){
+  const alreadyPaid=data.card_payments.filter(p=>p.card_id===card.id&&p.statement_month===month
+    &&visibleAccounts.has(p.account_id)).reduce((sum,p)=>sum+p.amount_cents,0);
+  if(alreadyPaid)rows.push({category:'Fatura já paga',type:'expense',
+   scope:card.scope,owner_id:card.owner_id,household_id:card.household_id,
+   card_id:null,amount_cents:-alreadyPaid});
  }
  // Diferença entre fatura oficial e compras já detalhadas; pode ser negativa
  // quando o cadastro de lançamentos supera o total informado no banco.
@@ -90,8 +100,14 @@ export function protectedProjection(data:Tables,view:PlanningView,uid:string,sta
   const incomeCents=rows.filter(r=>r.type==='income').reduce((s,r)=>s+r.amount_cents,0);
   const expenses=rows.filter(r=>r.type==='expense');
   const knownExpenseCents=expenses.reduce((s,r)=>s+r.amount_cents,0);
+  // Gastos já incluídos no saldo bancário não devem sair duas vezes do caixa,
+  // mas continuam consumindo a reserva da categoria correspondente.
+  const alreadyInBank=txHistory.filter(t=>t.type==='expense'&&isoMonth(t.due_date)===month
+    &&(t.in_opening_balance||!!(t.paid_at&&t.account_id)))
+   .map(t=>({category:t.category,type:t.type,scope:t.scope,
+     owner_id:t.owner_id,household_id:t.household_id,card_id:t.card_id,amount_cents:t.amount_cents}));
   const floors=effectiveCategoryBudgets(data,view,uid,month).map(b=>{
-   const knownCents=expenses.filter(e=>matchesBudget(e,b)).reduce((s,e)=>s+e.amount_cents,0);
+   const knownCents=[...expenses,...alreadyInBank].filter(e=>matchesBudget(e,b)).reduce((s,e)=>s+e.amount_cents,0);
    const extraCents=Math.max(0,b.amount_cents-knownCents);
    // Identifica categorias que o usuário realmente utiliza no cartão.
    const probablyCard=txHistory.some(t=>t.category===b.category&&!!t.card_id&&cardIds.has(t.card_id)
