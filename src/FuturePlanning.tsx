@@ -1,4 +1,4 @@
-import {useMemo,useState} from 'react';
+import {useEffect,useMemo,useState} from 'react';
 import {Calculator,CheckCircle2,AlertTriangle,ShieldCheck,ShoppingBag} from 'lucide-react';
 import type {Tables} from './types';
 import {categories} from './types';
@@ -11,6 +11,7 @@ export default function FuturePlanning({data,view,uid,month}:Props){
  const [amountMode,setAmountMode]=useState<'total'|'installment'>('total');
  const [installments,setInstallments]=useState('6');
  const [purchaseMonth,setPurchaseMonth]=useState(month);
+ useEffect(()=>setPurchaseMonth(month),[month]);
  const [purchaseDay,setPurchaseDay]=useState('10');
  const [category,setCategory]=useState('Compras');
  const [cardId,setCardId]=useState('');
@@ -82,9 +83,10 @@ export default function FuturePlanning({data,view,uid,month}:Props){
    {sim.error&&<div className="scenario-feedback warn"><AlertTriangle size={20}/>{sim.error}</div>}
    {sim.result&&<><div className={`scenario-feedback ${sim.result.verdict==='fits'?'ok':sim.result.verdict==='tight'?'warn':'neutral'}`}>
      {sim.result.verdict==='fits'?<CheckCircle2 size={23}/>:<AlertTriangle size={23}/>}
-     <div><strong>{sim.result.verdict==='fits'?'A compra cabe na projeção cadastrada':sim.result.verdict==='tight'?'Esta compra pressiona o orçamento':'Ainda não há receitas previstas suficientes para concluir'}</strong>
+     <div><strong>{sim.result.verdict==='fits'?'A compra cabe na projeção cadastrada':sim.result.verdict==='tight'?'Esta compra pressiona o orçamento':sim.result.verdict==='partial'?'Análise parcial: parcelas seguem após 12 meses':'Ainda não há receitas previstas suficientes para concluir'}</strong>
       <p>{sim.result.verdict==='fits'?'Não foram identificados déficits mensais nem estouro de limites com os valores informados.':
        sim.result.verdict==='tight'?'Pelo menos um mês ficaria negativo ou ultrapassaria um orçamento ou teto de cartão. Confira os períodos abaixo.':
+       sim.result.verdict==='partial'?'A compra não pressiona os 12 meses exibidos, mas há parcelas além desse período. Ainda não é possível afirmar que ela cabe no orçamento completo.':
        'Registre ou atualize as receitas futuras antes de confiar no resultado da simulação.'}</p></div>
     </div>
     <div className="planning-stats scenario-stats">
@@ -96,6 +98,7 @@ export default function FuturePlanning({data,view,uid,month}:Props){
     <div className="table-wrap"><table><thead><tr><th>Mês</th><th className="text-right">Resultado antes</th><th className="text-right">Resultado após compra</th><th className="text-right">Efeito na despesa</th></tr></thead><tbody>
      {sim.result.withPurchase.map((row,i)=><tr key={row.month}><td>{monthName(row.month)}</td><td className="text-right">{money(sim.result!.baseline[i].balanceCents)}</td><td className={`text-right strong ${row.balanceCents<0?'danger-text':'positive'}`}>{money(row.balanceCents)}</td><td className="text-right">{money(Math.max(0,row.expenseCents-sim.result!.baseline[i].expenseCents))}</td></tr>)}
     </tbody></table></div>
+    {sim.result.extendsBeyondHorizon&&<p className="scenario-note"><AlertTriangle size={15}/> Algumas parcelas vencem depois do horizonte analisado. A compra exige planejamento adicional.</p>}
     {sim.result.monthsOverCardCap.length>0&&<p className="scenario-note"><AlertTriangle size={15}/> Teto de cartões ultrapassado em {sim.result.monthsOverCardCap.map(monthName).join(', ')}.</p>}
     {sim.result.categoryOverages.length>0&&<p className="scenario-note"><AlertTriangle size={15}/> A categoria {category} ultrapassaria o limite cadastrado em {Array.from(new Set(sim.result.categoryOverages.map(x=>x.month))).map(monthName).join(', ')}.</p>}
     {sim.result.monthsWithDeficit.length>0&&<p className="scenario-note"><AlertTriangle size={15}/> Resultado mensal negativo em {sim.result.monthsWithDeficit.map(monthName).join(', ')}.</p>}
