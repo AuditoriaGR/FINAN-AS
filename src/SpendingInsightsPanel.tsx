@@ -1,12 +1,13 @@
 import {useMemo} from 'react';
 import {TrendingUp,TrendingDown,Search,Lightbulb,ShieldCheck,AlertTriangle} from 'lucide-react';
 import type {Tables} from './types';
-import {money,monthName} from './finance';
+import {money,monthName,today} from './finance';
 import {spendingInsights,type PlanningView} from './planning';
 
 type Props={data:Tables;view:PlanningView;uid:string;month:string};
 export default function SpendingInsightsPanel({data,view,uid,month}:Props){
- const insights=useMemo(()=>spendingInsights(data,view,uid,month),[data,view,uid,month]);
+ const anchor=month<=today().slice(0,7)?month:today().slice(0,7);
+ const insights=useMemo(()=>spendingInsights(data,view,uid,anchor),[data,view,uid,anchor]);
  const maxExpense=Math.max(1,...insights.months.map(x=>x.expenseCents));
  const labels={
   insufficient:'Dados de receitas insuficientes',
@@ -25,7 +26,7 @@ export default function SpendingInsightsPanel({data,view,uid,month}:Props){
    <div><small>Margem projetada dos próximos 3 meses</small><strong className={insights.projectedSurplusPercent!==null&&insights.projectedSurplusPercent<0?'danger-text':''}>{insights.projectedSurplusPercent===null?'—':`${insights.projectedSurplusPercent}%`}</strong><span>{labels[insights.signal]}</span></div>
   </div>
   <section className="panel">
-   <div className="panel-head"><div><h2><TrendingUp size={20}/> Tendência de gastos</h2><p>Meses encerrados — despesas pagas fora do cartão e compras registradas no cartão</p></div><span className="top-badge">6 meses</span></div>
+   <div className="panel-head"><div><h2><TrendingUp size={20}/> Tendência de gastos</h2><p>Seis meses anteriores a {monthName(anchor)} — despesas pagas e compras no cartão</p></div><span className="top-badge">6 meses</span></div>
    {insights.historicalMonths<3&&<div className="scenario-feedback neutral"><Search size={20}/><div><strong>Histórico ainda curto</strong><p>Precisamos de ao menos três meses encerrados com registros consistentes para gerar sugestões de economia mais confiáveis.</p></div></div>}
    <div className="spending-trend-bars">
     {insights.months.map(row=><div className="spending-trend-row" key={row.month}>
