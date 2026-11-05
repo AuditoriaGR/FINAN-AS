@@ -1,4 +1,4 @@
-import {useCallback,useEffect,useMemo,useState,type FormEvent,type ReactNode} from 'react';
+import {useCallback,useEffect,useMemo,useRef,useState,type FormEvent,type ReactNode} from 'react';
 import {Area,AreaChart,CartesianGrid,Cell,Legend,Pie,PieChart,ResponsiveContainer,Tooltip,XAxis,YAxis} from 'recharts';
 import {TrendingUp,LayoutDashboard,ArrowLeftRight,Wallet,CreditCard,PieChart as PieIcon,Target,Bell,ChartNoAxesCombined,CalendarDays,Settings,LogOut,Plus,ArrowUpRight,ArrowDownRight,Users,Menu,X,ChevronLeft,ChevronRight,Check,AlertTriangle,Info,ShieldCheck,Copy,LogIn,Download,RotateCcw,Coins,CheckCircle2} from 'lucide-react';
 import type {User} from '@supabase/supabase-js';
@@ -35,11 +35,18 @@ export default function App(){
  const [modal,setModal]=useState<Modal>(null),[form,setForm]=useState<Record<string,string>>({}),[context,setContext]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[sidebar,setSidebar]=useState(false);
  const [familyName,setFamilyName]=useState('Nossa casa'),[displayName,setDisplayName]=useState(''),[invite,setInvite]=useState(''),[inviteInput,setInviteInput]=useState('');
  const uid=user?.id||demoUser;
+ const refreshVersion=useRef(0);
+ const [lastSyncedAt,setLastSyncedAt]=useState<string|null>(null);
  const saveNotice=(v:string)=>{setNotice(v);window.setTimeout(()=>setNotice(''),6500)};
  const refresh=useCallback(async()=>{
   const client=db;
   if(!client)return;
-  const who=await client.auth.getUser();if(!who.data.user){setUser(null);setAuthLoaded(true);return}
+  // Cada consulta recebe uma versão. Uma resposta antiga não pode sobrescrever
+  // a consulta mais recente, especialmente após excluir um lançamento.
+  const version=++refreshVersion.current;
+  const who=await client.auth.getUser();
+  if(version!==refreshVersion.current)return;
+  if(!who.data.user){setUser(null);setAuthLoaded(true);return}
   const me=who.data.user;setUser(me);
   const tables:(keyof Tables)[]=['account_balance_adjustments','card_statement_totals','card_spending_limits','accounts','credit_cards','transactions','category_budgets','financial_goals','goal_contributions','recurring_rules','card_payments','household_members'];
   const results=await Promise.all(tables.map(async table=>{
@@ -54,21 +61,50 @@ export default function App(){
     }
     return {table,rows,error}
   }));
+  if(version!==refreshVersion.current)return;
+  // Se uma tabela falhar, preserva os dados locais em vez de zerá-los.
   const next={...blankData} as Tables;
-  for(const item of results){if(item.error)saveNotice(`Falha ao carregar ${item.table}: ${item.error.message}`);(next as unknown as Record<string,unknown[]>)[item.table]=item.rows}
-  setData(next);
+  for(const item of results){
+   if(item.error){saveNotice(`Falha ao carregar ${item.table}: ${item.error.message}`);continue}
+   (next as unknown as Record<string,unknown[]>)[item.table]=item.rows
+  }
   const hm=next.household_members.find(m=>m.user_id===me.id);
-  if(hm){const r=await client.from('households').select('*').eq('id',hm.household_id).single();setHousehold(r.data as Household|null)}else setHousehold(null);
+  let loadedHousehold:Household|null=null;
+  if(hm){const r=await client.from('households').select('*').eq('id',hm.household_id).single();loadedHousehold=r.data as Household|null}
+  if(version!==refreshVersion.current)return;
+  setData(old=>{
+   for(const item of results){
+    if(item.error)(next as unknown as Record<string,unknown[]>)[item.table]=(old as unknown as Record<string,unknown[]>)[item.table];
+   }
+   return next;
+  });
+  setHousehold(loadedHousehold);
+  setLastSyncedAt(new Date().toLocaleTimeString('pt-BR'));
   setAuthLoaded(true)
  },[]);
- useEffect(()=>{if(!db)return;void refresh();const {data:sub}=db.auth.onAuthStateChange((_event,session)=>{if(!session?.user){setUser(null);setData({...blankData});setHousehold(null);setAuthLoaded(true)}else setTimeout(()=>void refresh(),0)});return()=>sub.subscription.unsubscribe()},[refresh]);
+ useEffect(()=>{if(!db)return;void refresh();const {data:sub}=db.auth.onAuthStateChange((_event,session)=>{if(!session?.user){refreshVersion.current++;setUser(null);setData({...blankData});setHousehold(null);setAuthLoaded(true)}else setTimeout(()=>void refresh(),0)});return()=>sub.subscription.unsubscribe()},[refresh]);
+ useEffect(()=>{
+  if(!db)return;
+  const onVisible=()=>{if(document.visibilityState==='visible')void refresh()};
+  document.addEventListener('visibilitychange',onVisible);
+  return()=>document.removeEventListener('visibilitychange',onVisible);
+ },[refresh]);
  const handleAuth=async(e:FormEvent)=>{e.preventDefault();if(!db)return;setBusy(true);setAuthMessage('');const result=authMode==='login'?await db.auth.signInWithPassword({email:authEmail,password:authPass}):await db.auth.signUp({email:authEmail,password:authPass,options:{data:{display_name:authName},emailRedirectTo:window.location.origin}});if(result.error)setAuthMessage(result.error.message);else if(authMode==='register'&&!result.data.session)setAuthMessage('Cadastro criado. Confira seu e-mail para confirmar a conta e depois entre.');else{setAuthMessage('');await refresh()}setBusy(false)};
  const handleNewHousehold=async()=>{if(!db||!user)return;setBusy(true);try{const r=await db.rpc('create_household_space',{p_name:familyName.trim(),p_display_name:(displayName||user.user_metadata?.display_name||'Titular').trim()});if(r.error)saveNotice(r.error.message);else{saveNotice('Espaço financeiro criado.');await refresh()}}finally{setBusy(false)}};
  const joinFamily=async()=>{if(!db||!user||!inviteInput.trim())return;setBusy(true);const r=await db.rpc('join_household',{p_token:inviteInput.trim(),p_display_name:displayName||user.user_metadata?.display_name||'Integrante'});if(r.error)saveNotice(r.error.message);else{saveNotice('Convite aceito! Bem-vindo ao grupo.');await refresh()}setBusy(false)};
  const createInvite=async()=>{if(!db||!household)return;const r=await db.rpc('create_household_invitation',{p_household_id:household.id});if(r.error)saveNotice(r.error.message);else{setInvite(String(r.data));saveNotice('Convite gerado. Compartilhe o código por um canal seguro.')}};
  const create=async(table:keyof Tables,payload:Record<string,unknown>|Record<string,unknown>[])=>{if(!db){const vals=(Array.isArray(payload)?payload:[payload]).map(p=>({...p,id:crypto.randomUUID(),created_at:today()}));setData(old=>({...old,[table]:[...((old as unknown as Record<string,unknown[]>)[table]||[]),...vals]}));saveNotice('Registro adicionado à demonstração (não persistente).');return true}const r=await db.from(table).insert(payload as never);if(r.error){saveNotice(r.error.message);return false}await refresh();saveNotice('Registro salvo com sucesso.');return true};
  const patch=async(table:keyof Tables,id:string,fields:Record<string,unknown>)=>{if(!db){setData(old=>({...old,[table]:(old[table] as {id?:string}[]).map(x=>x.id===id?{...x,...fields}:x)}));saveNotice('Demonstração atualizada.');return true}const r=await db.from(table).update(fields as never).eq('id',id);if(r.error){saveNotice(r.error.message);return false}await refresh();saveNotice('Registro atualizado.');return true};
- const del=async(table:keyof Tables,id:string)=>{if(!window.confirm('Excluir este registro? Esta ação não pode ser desfeita.'))return;if(!db){setData(old=>({...old,[table]:(old[table] as {id?:string}[]).filter(x=>x.id!==id)}));return}const r=await db.from(table).delete().eq('id',id);if(r.error)saveNotice(r.error.message);else{await refresh();saveNotice('Registro excluído.')}};
+ const del=async(table:keyof Tables,id:string)=>{
+  if(!window.confirm('Excluir este registro? Esta ação não pode ser desfeita.'))return;
+  if(!db){setData(old=>({...old,[table]:(old[table] as {id?:string}[]).filter(x=>x.id!==id)}));return}
+  const r=await db.from(table).delete().eq('id',id).select('id');
+  if(r.error){saveNotice(r.error.message);return}
+  if(!r.data?.length){saveNotice('Registro não encontrado ou sem permissão para excluir.');return}
+  setData(old=>({...old,[table]:(old[table] as {id?:string}[]).filter(x=>x.id!==id)}));
+  await refresh();
+  saveNotice('Registro excluído. Projeção atualizada com os dados do banco.');
+ };
  const open=(m:Modal,id='')=>{
   setModal(m);setContext(id);
   const initial={scope:household?'shared':'private',type:'expense',category:'Supermercado',date:today(),due:today(),month,amount:'',installments:'1',installmentAmountMode:'total',fixedAmountMode:'fixed',day:'10',closing:'2',dueDay:'12',kind:'Conta corrente',deadline:'',name:'',description:'',paid:'no',...(m==='account'?{amount:'0,00'}:{})};
@@ -256,7 +292,7 @@ export default function App(){
   {sidebar&&<div className="mobile-overlay" onClick={()=>setSidebar(false)}/>}
   <aside className={`sidebar ${sidebar?'open':''}`}><div className="sidebar-top"><div className="brand"><span className="brand-icon"><Wallet size={20}/></span>Meu <strong>Financeiro</strong></div><button className="mobile-close" onClick={()=>setSidebar(false)}><X size={21}/></button></div><div className="sidebar-caption">ORGANIZAÇÃO</div><nav>{nav.map(item=>{const Icon=item.icon;return <button key={item.id} className={`nav-item ${page===item.id?'active':''}`} onClick={()=>{setPage(item.id);setSidebar(false)}}><Icon size={19}/><span>{item.name}</span>{item.id==='alerts'&&alerts.length>0&&<span className="nav-count">{alerts.length}</span>}</button>})}</nav><div className="sidebar-footer"><div className="family-chip"><span className="family-avatar"><Users size={18}/></span><div><strong>{household?.name||'Nossa casa'}</strong><small>Espaço financeiro</small></div></div><div className="sidebar-secure"><ShieldCheck size={14}/>Ambiente {configured?'privado':'demonstrativo'}</div></div></aside>
   <main className="main"><header className="topbar"><div className="topbar-left"><button className="hamburger" onClick={()=>setSidebar(true)}><Menu size={22}/></button><span className="breadcrumb">Meu Financeiro</span><span className="breadcrumb-divider">/</span><strong>{title}</strong></div><div className="topbar-right"><button className="icon-button alert-button" title="Alertas" onClick={()=>setPage('alerts')}><Bell size={20}/>{alerts.length>0&&<span className="alert-dot"/>}</button><div className="avatar" title={user?.email||'Demonstração'}>{(user?.user_metadata?.display_name||'Você').slice(0,1).toUpperCase()}</div></div></header>
-  <div className="content"><div className="page-heading"><div><span className="eyebrow">CONTROLE FINANCEIRO</span><h1>{page==='dashboard'?'Sua visão financeira':title}</h1><p>{page==='dashboard'?'Acompanhe o presente e planeje o que vem pela frente.':page==='settings'?'Preferências e acesso compartilhado.':'Organize, acompanhe e tome decisões com clareza.'}</p></div><div className="heading-actions"><select aria-label="Visão de dados" value={view} onChange={e=>setView(e.target.value as View)}><option value="all">Consolidado acessível</option><option value="mine">Meus registros</option><option value="shared">Somente casal</option></select><div className="month-switch"><button title="Mês anterior" disabled={month<=PLANNING_START_MONTH} onClick={()=>setMonth(m=>m<=PLANNING_START_MONTH?m:monthShift(m,-1))}><ChevronLeft size={18}/></button><span>{monthName(month)}</span><button title="Mês seguinte" onClick={()=>setMonth(m=>monthShift(m,1))}><ChevronRight size={18}/></button></div></div></div>
+  <div className="content"><div className="page-heading"><div><span className="eyebrow">CONTROLE FINANCEIRO</span><h1>{page==='dashboard'?'Sua visão financeira':title}</h1><p>{page==='dashboard'?'Acompanhe o presente e planeje o que vem pela frente.':page==='settings'?'Preferências e acesso compartilhado.':'Organize, acompanhe e tome decisões com clareza.'}</p></div><div className="heading-actions"><select aria-label="Visão de dados" value={view} onChange={e=>setView(e.target.value as View)}><option value="all">Consolidado acessível</option><option value="mine">Meus registros</option><option value="shared">Somente casal</option></select><div className="month-switch"><button title="Mês anterior" disabled={month<=PLANNING_START_MONTH} onClick={()=>setMonth(m=>m<=PLANNING_START_MONTH?m:monthShift(m,-1))}><ChevronLeft size={18}/></button><span>{monthName(month)}</span><button title="Mês seguinte" onClick={()=>setMonth(m=>monthShift(m,1))}><ChevronRight size={18}/></button></div><button className="secondary small" onClick={()=>void refresh()} title="Atualizar lançamentos e recalcular a projeção"><RotateCcw size={15}/> Atualizar dados</button>{lastSyncedAt&&<span className="sync-time">Sincronizado às {lastSyncedAt}</span>}</div></div>
   {!configured&&<div className="demo-warning"><Info size={18}/><span><strong>Modo demonstração:</strong> os valores são fictícios e os registros realizados aqui não são armazenados. Conecte um projeto Supabase pessoal para usar dados reais.</span></div>}
   {notice&&<div className="toast"><Info size={17}/>{notice}<button onClick={()=>setNotice('')}><X size={15}/></button></div>}
   {page==='dashboard'&&<>
