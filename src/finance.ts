@@ -27,6 +27,26 @@ export function accountBalance(a:Account,txs:Tx[],payments:CardPayment[],adjustm
  const correction=adjustments.filter(j=>j.account_id===a.id).reduce((sum,j)=>sum+j.delta_cents,0);
  return a.opening_balance_cents+paid-cards+correction;
 }
+/** Investimentos são patrimônio, mas não representam dinheiro disponível
+ * para faturas e compras. A classificação é feita pelo tipo da conta.
+ * Um nome CDB também é protegido caso a conta tenha sido cadastrada com
+ * o tipo incorreto, sem reclassificar a conta bancária no banco.
+ */
+export function isInvestmentAccount(account:Pick<Account,'kind'|'name'>):boolean{
+ const kind=account.kind.trim().toLocaleLowerCase('pt-BR');
+ return kind==='investimentos'||kind==='investimento'||kind==='cdb'||/\bcdb\b/i.test(account.name);
+}
+export function accountBalancesByPurpose(
+ accounts:Account[],txs:Tx[],payments:CardPayment[],adjustments:BalanceAdjustment[]=[]
+){
+ let availableCents=0,investmentCents=0;
+ for(const account of accounts){
+  const amount=accountBalance(account,txs,payments,adjustments);
+  if(isInvestmentAccount(account))investmentCents+=amount;
+  else availableCents+=amount;
+ }
+ return {availableCents,investmentCents,totalCents:availableCents+investmentCents};
+}
 export function cardInvoice(cardId:string,month:string,txs:Tx[],payments:CardPayment[],statements:CardStatementTotal[]=[]){
  const itemized=txs.filter(x=>x.card_id===cardId&&isoMonth(x.due_date)===month).reduce((a,x)=>a+x.amount_cents,0);
  const record=statements.find(x=>x.card_id===cardId&&x.statement_month===month);
