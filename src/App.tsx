@@ -10,7 +10,7 @@ import FuturePlanning from './FuturePlanning';
 import SpendingInsightsPanel from './SpendingInsightsPanel';
 import {effectiveCategoryBudgets,protectedProjection} from './planning';
 import {blankData,categories,type Tables,type Tx,type Scope,type Household} from './types';
-import {money,cents,monthShift,dueDate,today,monthName,visible,totals,adjustedMonthlyTotals,budgetStatus,goalProgress,accountBalance,cardInvoice,generateAlerts,installmentPlan,installmentSummary,invoiceMonthForPurchase,isoMonth,recurringDueDateForCharge,cardSpendingSummary} from './finance';
+import {money,cents,monthShift,dueDate,today,monthName,visible,adjustedMonthlyTotals,budgetStatus,goalProgress,accountBalance,cardInvoice,generateAlerts,installmentPlan,installmentSummary,invoiceMonthForPurchase,isoMonth,recurringDueDateForCharge,cardSpendingSummary} from './finance';
 
 type Page='dashboard'|'transactions'|'fixed'|'budgets'|'goals'|'cards'|'accounts'|'planning'|'comparison'|'insights'|'alerts'|'settings';
 type Modal='transaction'|'budget'|'goal'|'contribution'|'account'|'accountbalance'|'card'|'cardstatement'|'recurring'|'adjustfixed'|'payment'|null;
