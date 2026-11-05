@@ -4,13 +4,14 @@ import {LayoutDashboard,ArrowLeftRight,Wallet,CreditCard,PieChart as PieIcon,Tar
 import type {User} from '@supabase/supabase-js';
 import {db,configured} from './supabase';
 import {demoData,demoHousehold,demoUser} from './demo';
+import FixedCommitments from './FixedCommitments';
 import {blankData,categories,type Tables,type Tx,type Scope,type Household} from './types';
 import {money,cents,monthShift,dueDate,today,monthName,visible,totals,budgetStatus,goalProgress,accountBalance,cardInvoice,forecast,generateAlerts,installmentPlan,invoiceMonthForPurchase,isoMonth} from './finance';
 
-type Page='dashboard'|'transactions'|'budgets'|'goals'|'cards'|'accounts'|'planning'|'comparison'|'alerts'|'settings';
+type Page='dashboard'|'transactions'|'fixed'|'budgets'|'goals'|'cards'|'accounts'|'planning'|'comparison'|'alerts'|'settings';
 type Modal='transaction'|'budget'|'goal'|'contribution'|'account'|'card'|'recurring'|'payment'|null;
 type View='all'|'mine'|'shared';
-const nav:{id:Page;name:string;icon:typeof LayoutDashboard}[]=[{id:'dashboard',name:'Visão geral',icon:LayoutDashboard},{id:'transactions',name:'Lançamentos',icon:ArrowLeftRight},{id:'budgets',name:'Orçamentos',icon:PieIcon},{id:'goals',name:'Metas',icon:Target},{id:'cards',name:'Cartões',icon:CreditCard},{id:'accounts',name:'Contas',icon:Wallet},{id:'planning',name:'Planejamento',icon:CalendarDays},{id:'comparison',name:'Comparativos',icon:ChartNoAxesCombined},{id:'alerts',name:'Alertas',icon:Bell},{id:'settings',name:'Configurações',icon:Settings}];
+const nav:{id:Page;name:string;icon:typeof LayoutDashboard}[]=[{id:'dashboard',name:'Visão geral',icon:LayoutDashboard},{id:'transactions',name:'Lançamentos',icon:ArrowLeftRight},{id:'fixed',name:'Fixas e parcelas',icon:RotateCcw},{id:'budgets',name:'Orçamentos',icon:PieIcon},{id:'goals',name:'Metas',icon:Target},{id:'cards',name:'Cartões',icon:CreditCard},{id:'accounts',name:'Contas',icon:Wallet},{id:'planning',name:'Planejamento',icon:CalendarDays},{id:'comparison',name:'Comparativos',icon:ChartNoAxesCombined},{id:'alerts',name:'Alertas',icon:Bell},{id:'settings',name:'Configurações',icon:Settings}];
 const palette=['#1c7c78','#e3a864','#8691ce','#d27c74','#72a3ba','#bb92a6','#738d71','#ad998a'];
 const mDate=(s:string)=>s ? s.split('-').reverse().join('/') : '—';
 function IconBadge({children,variant='teal'}:{children:ReactNode;variant?:'teal'|'coral'|'gold'|'blue'}){return <span className={`icon-badge ${variant}`}>{children}</span>}
@@ -50,9 +51,14 @@ export default function App(){
  const joinFamily=async()=>{if(!db||!user||!inviteInput.trim())return;setBusy(true);const r=await db.rpc('join_household',{p_token:inviteInput.trim(),p_display_name:displayName||user.user_metadata?.display_name||'Integrante'});if(r.error)saveNotice(r.error.message);else{saveNotice('Convite aceito! Bem-vindo ao grupo.');await refresh()}setBusy(false)};
  const createInvite=async()=>{if(!db||!household)return;const r=await db.rpc('create_household_invitation',{p_household_id:household.id});if(r.error)saveNotice(r.error.message);else{setInvite(String(r.data));saveNotice('Convite gerado. Compartilhe o código por um canal seguro.')}};
  const create=async(table:keyof Tables,payload:Record<string,unknown>|Record<string,unknown>[])=>{if(!db){const vals=(Array.isArray(payload)?payload:[payload]).map(p=>({...p,id:crypto.randomUUID(),created_at:today()}));setData(old=>({...old,[table]:[...((old as unknown as Record<string,unknown[]>)[table]||[]),...vals]}));saveNotice('Registro adicionado à demonstração (não persistente).');return true}const r=await db.from(table).insert(payload as never);if(r.error){saveNotice(r.error.message);return false}await refresh();saveNotice('Registro salvo com sucesso.');return true};
- const patch=async(table:keyof Tables,id:string,fields:Record<string,unknown>)=>{if(!db){setData(old=>({...old,[table]:(old[table] as {id?:string}[]).map(x=>x.id===id?{...x,...fields}:x)}));saveNotice('Demonstração atualizada.');return}const r=await db.from(table).update(fields as never).eq('id',id);if(r.error)saveNotice(r.error.message);else{await refresh();saveNotice('Registro atualizado.')}};
+ const patch=async(table:keyof Tables,id:string,fields:Record<string,unknown>)=>{if(!db){setData(old=>({...old,[table]:(old[table] as {id?:string}[]).map(x=>x.id===id?{...x,...fields}:x)}));saveNotice('Demonstração atualizada.');return true}const r=await db.from(table).update(fields as never).eq('id',id);if(r.error){saveNotice(r.error.message);return false}await refresh();saveNotice('Registro atualizado.');return true};
  const del=async(table:keyof Tables,id:string)=>{if(!window.confirm('Excluir este registro? Esta ação não pode ser desfeita.'))return;if(!db){setData(old=>({...old,[table]:(old[table] as {id?:string}[]).filter(x=>x.id!==id)}));return}const r=await db.from(table).delete().eq('id',id);if(r.error)saveNotice(r.error.message);else{await refresh();saveNotice('Registro excluído.')}};
- const open=(m:Modal,id='')=>{setModal(m);setContext(id);setForm({scope:household?'shared':'private',type:'expense',category:'Supermercado',date:today(),due:today(),month,amount:'',installments:'1',day:'10',closing:'2',dueDay:'12',kind:'Conta corrente',deadline:'',name:'',description:'',paid:'yes',...(m==='account'?{amount:'0,00'}:{})});};
+ const open=(m:Modal,id='')=>{
+  setModal(m);setContext(id);
+  const initial={scope:household?'shared':'private',type:'expense',category:'Supermercado',date:today(),due:today(),month,amount:'',installments:'1',day:'10',closing:'2',dueDay:'12',kind:'Conta corrente',deadline:'',name:'',description:'',paid:'no',...(m==='account'?{amount:'0,00'}:{})};
+  const existing=m==='recurring'&&id?data.recurring_rules.find(r=>r.id===id):null;
+  setForm(existing?{...initial,scope:existing.scope,type:existing.type,category:existing.category,description:existing.description,amount:(existing.amount_cents/100).toFixed(2).replace('.',','),day:String(existing.day_of_month),month:existing.start_month,endMonth:existing.end_month||'',paymentTarget:existing.account_id||''}:initial);
+ };
  const f=(key:string,value:string)=>setForm(old=>({...old,[key]:value}));
  const scopeProps=()=>({owner_id:uid,scope:form.scope||'private',household_id:form.scope==='shared'?household?.id:null});
  const submitModal=async(e:FormEvent)=>{e.preventDefault();if(!modal)return;setBusy(true);let okay=false;const amount=cents(form.amount||'0');try{if(!Number.isSafeInteger(amount)||((modal!=='account')&&amount<=0))throw Error('Informe um valor válido');
