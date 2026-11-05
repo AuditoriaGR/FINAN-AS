@@ -119,6 +119,22 @@ describe('simulador não persistente de compras',()=>{
   expect(x.monthsOverCardCap).toContain('2026-12');
   expect(x.verdict).toBe('tight');
  });
+ it('sinaliza análise parcial quando há prestações após o horizonte de 12 meses',()=>{
+  const data:Tables={...blankData,recurring_rules:[rule('salary','income','Salário',150000)]};
+  const x=simulatePurchase(data,'all',uid,'2026-11',12,{
+   amountCents:240000,amountMode:'total',installments:24,purchaseMonth:'2026-11',
+   purchaseDay:10,category:'Compras',cardId:null
+  });
+  expect(x.extendsBeyondHorizon).toBe(true);
+  expect(x.verdict).toBe('partial');
+  expect(x.impactCents).toBe(120000);
+ });
+ it('não considera compras fora do período simulado',()=>{
+  expect(()=>simulatePurchase(blankData,'all',uid,'2026-11',12,{
+    amountCents:120000,amountMode:'total',installments:1,
+    purchaseMonth:'2028-11',purchaseDay:10,category:'Compras',cardId:null
+  })).toThrow('12 meses');
+ });
  it('reconhece valor individual de parcela',()=>{
   const data:Tables={...blankData};
   const x=simulatePurchase(data,'all',uid,'2026-11',3,{
