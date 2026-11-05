@@ -69,7 +69,7 @@ export default function App(){
   const initial={scope:household?'shared':'private',type:'expense',category:'Supermercado',date:today(),due:today(),month,amount:'',installments:'1',installmentAmountMode:'total',fixedAmountMode:'fixed',day:'10',closing:'2',dueDay:'12',kind:'Conta corrente',deadline:'',name:'',description:'',paid:'no',...(m==='account'?{amount:'0,00'}:{})};
   const existing=(m==='recurring'||m==='adjustfixed')&&id?data.recurring_rules.find(r=>r.id===id):null;
   const actual=m==='adjustfixed'&&existing?data.transactions.find(t=>t.recurring_rule_id===existing.id&&isoMonth(t.due_date)===month):null;
-  setForm(existing?{...initial,scope:existing.scope,type:existing.type,category:existing.category,description:existing.description,amount:(existing.amount_cents/100).toFixed(2).replace('.',','),day:String(existing.day_of_month),month:existing.start_month,endMonth:existing.end_month||'',paymentTarget:existing.account_id||'',fixedAmountMode:existing.amount_mode||'fixed',amount:((actual?.amount_cents??existing.amount_cents)/100).toFixed(2).replace('.',',')}:initial);
+  setForm(existing?{...initial,scope:existing.scope,type:existing.type,category:existing.category,description:existing.description,day:String(existing.day_of_month),month:existing.start_month,endMonth:existing.end_month||'',paymentTarget:existing.account_id||'',fixedAmountMode:existing.amount_mode||'fixed',amount:((actual?.amount_cents??existing.amount_cents)/100).toFixed(2).replace('.',',')}:initial);
  };
  const f=(key:string,value:string)=>setForm(old=>({...old,[key]:value}));
  const scopeProps=()=>({owner_id:uid,scope:form.scope||'private',household_id:form.scope==='shared'?household?.id:null});
