@@ -54,6 +54,24 @@ describe('planejamento protegido',()=>{
   expect(r.cardReserveCents).toBe(60000);
   expect(r.expenseCents).toBe(150000);
  });
+ it('parcela do carro retirada de novembro altera imediatamente o resultado e continua em dezembro',()=>{
+  const carRule=rule('car','expense','Transporte',134000,{description:'Parcela Carro',start_month:'2026-12'});
+  const incomeRule=rule('salary','income','Salário',300000,{start_month:'2026-11'});
+  const otherExpense=rule('fuel','expense','Transporte',20000,{start_month:'2026-11'});
+  const withoutNovemberCar:Tables={...blankData,recurring_rules:[carRule,incomeRule,otherExpense]};
+  const november=protectedProjection(withoutNovemberCar,'all',uid,'2026-11',2);
+  expect(november[0].knownExpenseCents).toBe(20000);
+  expect(november[0].balanceCents).toBe(280000);
+  expect(november[1].knownExpenseCents).toBe(154000);
+  expect(november[1].balanceCents).toBe(146000);
+  const withErroneousNov:Tables={...withoutNovemberCar,transactions:[
+   tx('mistaken-car','2026-11','Transporte',134000)
+  ]};
+  const before=protectedProjection(withErroneousNov,'all',uid,'2026-11',1)[0];
+  expect(before.balanceCents).toBe(146000);
+  const after=protectedProjection(withoutNovemberCar,'all',uid,'2026-11',1)[0];
+  expect(after.balanceCents-before.balanceCents).toBe(134000);
+ });
  it('mantém alerta de limite de categoria mesmo no mês seguinte ao cadastro',()=>{
   const data:Tables={...blankData,category_budgets:[budget('b','2026-11','Compras',20000)],
    transactions:[tx('compras','2026-12','Compras',19000)]};
