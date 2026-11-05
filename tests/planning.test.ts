@@ -182,13 +182,13 @@ describe('saldo projetado acumulado entre meses',()=>{
   expect(january.balanceCents).toBe(30000);
   expect(january.cumulativeCents).toBe(90000);
  });
- it('não adiciona automaticamente o saldo das contas bancárias ao saldo projetado',()=>{
+ it('soma o saldo inicial das contas ao fluxo projetado',()=>{
   const data:Tables={...blankData,accounts:[{id:'bank',owner_id:uid,household_id:null,scope:'private',
    name:'Conta',kind:'Corrente',opening_balance_cents:500000}],
    transactions:[tx('income','2026-12','Salário',100000,{type:'income'})]
   };
   const result=projectedWithCarryForward(data,'all',uid,'2026-12',1,'2026-12');
-  expect(result[0].cumulativeCents).toBe(100000);
+  expect(result[0].cumulativeCents).toBe(600000);
  });
 });
 
