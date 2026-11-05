@@ -168,7 +168,15 @@ export function simulatePurchase(data:Tables,view:PlanningView,uid:string,start:
   });
  }
  const baseline=protectedProjection(data,view,uid,start,months);
- const simulatedData={...data,transactions:[...data.transactions,...created]};
+ // A simulação é uma NOVA compra: não pode usar como crédito a diferença
+ // de uma fatura oficial já confirmada pelo usuário. Preservamos a fatura
+ // como fotografia histórica e aumentamos apenas o cenário hipotético.
+ const simulatedStatements=data.card_statement_totals.map(st=>{
+  const added=created.filter(t=>t.card_id===st.card_id&&isoMonth(t.due_date)===st.statement_month)
+   .reduce((sum,t)=>sum+t.amount_cents,0);
+  return added?{...st,actual_amount_cents:st.actual_amount_cents+added}:st;
+ });
+ const simulatedData={...data,transactions:[...data.transactions,...created],card_statement_totals:simulatedStatements};
  const withPurchase=protectedProjection(simulatedData,view,uid,start,months);
  const impactCents=withPurchase.reduce((s,r,i)=>s+Math.max(0,r.expenseCents-baseline[i].expenseCents),0);
  const monthsWithDeficit=withPurchase.filter(r=>r.balanceCents<0).map(r=>r.month);
