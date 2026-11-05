@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {accountBalance,budgetStatus,cardInvoice,cents,dueDate,forecast,goalProgress,installmentPlan,invoiceMonthForPurchase,monthShift,totals,installmentSummary} from '../src/finance';
+import {accountBalance,budgetStatus,cardInvoice,cents,dueDate,forecast,goalProgress,installmentPlan,invoiceMonthForPurchase,monthShift,totals,installmentSummary,recurringDueDateForCharge} from '../src/finance';
 import {blankData,type Tx} from '../src/types';
 const makeTx=(fields:Partial<Tx>):Tx=>({id:'test',owner_id:'u1',household_id:null,scope:'private',description:'Test',type:'expense',category:'Alimentação',amount_cents:10000,transaction_date:'2026-11-01',due_date:'2026-11-10',paid_at:null,account_id:null,card_id:null,installment_group_id:null,installment_number:null,installment_total:null,recurring_rule_id:null,...fields});
 describe('regras financeiras',()=>{
@@ -20,6 +20,47 @@ describe('regras financeiras',()=>{
   expect(()=>installmentSummary(100,2.5,'total')).toThrow();
  });
  it('divide parcelas mantendo centavos exatos',()=>{const plan=installmentPlan(100001,3,'2026-11',12);expect(plan.map(x=>x.amount_cents)).toEqual([33334,33334,33333]);expect(plan.map(x=>x.due_date)).toEqual(['2026-11-12','2026-12-12','2027-01-12'])});
+ it('despesa fixa no cartão entra na fatura do mês correto',()=>{
+  const rule={id:'fixed',owner_id:'u1',household_id:null,scope:'private' as const,type:'expense' as const,
+    description:'Streaming',category:'Assinaturas',amount_cents:4990,day_of_month:10,
+    account_id:null,card_id:'card1',start_month:'2026-11',end_month:null};
+  const card={id:'card1',owner_id:'u1',household_id:null,scope:'private' as const,name:'Meu cartão',credit_limit_cents:100000,
+    closing_day:20,due_day:5};
+  expect(recurringDueDateForCharge(rule,'2026-11',[card])).toBe('2026-12-05');
+  expect(forecast({...blankData,credit_cards:[card],recurring_rules:[rule]},'mine','u1','2026-11',3)
+    .map(x=>x.expense)).toEqual([0,4990,4990]);
+ });
+ it('cobrança fixa após fechamento passa para fatura posterior',()=>{
+  const rule={id:'fixed',owner_id:'u1',household_id:null,scope:'private' as const,type:'expense' as const,
+    description:'Seguro',category:'Assinaturas',amount_cents:7990,day_of_month:25,
+    account_id:null,card_id:'card1',start_month:'2026-11',end_month:null};
+  const card={id:'card1',owner_id:'u1',household_id:null,scope:'private' as const,name:'Cartão',credit_limit_cents:100000,
+    closing_day:20,due_day:5};
+  expect(recurringDueDateForCharge(rule,'2026-11',[card])).toBe('2027-01-05');
+  expect(forecast({...blankData,credit_cards:[card],recurring_rules:[rule]},'mine','u1','2026-11',3)
+    .map(x=>x.expense)).toEqual([0,0,7990]);
+ });
+ it('fatura não duplica cobrança fixa já gerada',()=>{
+  const rule={id:'fixed',owner_id:'u1',household_id:null,scope:'private' as const,type:'expense' as const,
+    description:'Streaming',category:'Assinaturas',amount_cents:4990,day_of_month:10,
+    account_id:null,card_id:'card1',start_month:'2026-11',end_month:null};
+  const card={id:'card1',owner_id:'u1',household_id:null,scope:'private' as const,name:'Meu cartão',credit_limit_cents:100000,
+    closing_day:20,due_day:5};
+  const tx=makeTx({recurring_rule_id:'fixed',card_id:'card1',amount_cents:4990,
+    transaction_date:'2026-11-10',due_date:'2026-12-05',paid_at:null});
+  expect(forecast({...blankData,credit_cards:[card],recurring_rules:[rule],transactions:[tx]},'mine','u1','2026-11',3)
+    .map(x=>x.expense)).toEqual([0,4990,4990]);
+  expect(cardInvoice('card1','2026-12',[tx],[]).charged).toBe(4990);
+  expect(accountBalance({id:'bank',owner_id:'u1',household_id:null,scope:'private',name:'Banco',kind:'Corrente',opening_balance_cents:80000},[tx],[])).toBe(80000);
+ });
+ it('cônjuge pode estimar vencimento sem revelar o cartão privado',()=>{
+  const rule={id:'shared-rule',owner_id:'u1',household_id:'house',scope:'shared' as const,
+    type:'expense' as const,description:'Assinatura',category:'Assinaturas',amount_cents:2390,
+    day_of_month:10,account_id:null,card_id:'private-card',start_month:'2026-11',end_month:null};
+  const previous=makeTx({scope:'shared',household_id:'house',owner_id:'u1',recurring_rule_id:'shared-rule',
+    card_id:'private-card',transaction_date:'2026-11-10',due_date:'2026-12-05',amount_cents:2390});
+  expect(recurringDueDateForCharge(rule,'2026-12',[],[previous])).toBe('2027-01-05');
+ });
  it('não conta pagamento da fatura como nova despesa',()=>{const tx=makeTx({card_id:'card',amount_cents:50000});const pay={id:'p1',card_id:'card',owner_id:'u1',account_id:'bank',statement_month:'2026-11',amount_cents:30000,paid_at:'2026-11-11'};expect(cardInvoice('card','2026-11',[tx],[pay]).outstanding).toBe(20000);expect(totals([tx],'2026-11').expense).toBe(50000)});
  it('calcula saldo de conta com compras pagas e pagamentos de fatura',()=>{const account={id:'bank',owner_id:'u1',scope:'private' as const,household_id:null,name:'Banco',kind:'Corrente',opening_balance_cents:120000};const txs=[makeTx({type:'income',paid_at:'2026-11-05',account_id:'bank',amount_cents:20000}),makeTx({type:'expense',paid_at:'2026-11-06',account_id:'bank',amount_cents:10000}),makeTx({type:'expense',paid_at:null,account_id:'bank',amount_cents:10000})];const pay={id:'p',owner_id:'u1',card_id:'card',account_id:'bank',statement_month:'2026-11',amount_cents:20000,paid_at:'2026-11-15'};expect(accountBalance(account,txs,[pay])).toBe(110000)});
  it('orçamento do casal ignora gastos privados',()=>{const b={id:'b',owner_id:'u1',household_id:'h1',scope:'shared' as const,category:'Alimentação',month:'2026-11',amount_cents:15000};const txs=[makeTx({scope:'shared',household_id:'h1',amount_cents:12000}),makeTx({scope:'private',amount_cents:9000})];expect(budgetStatus(b,txs).percent).toBe(80)});
