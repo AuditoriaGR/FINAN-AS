@@ -47,6 +47,16 @@ export default function SpendingInsightsPanel({data,view,uid,month}:Props){
      <div className="opportunity-saving"><span>Simulação de reduzir 10%</span><strong>{money(item.illustrativeSavingsCents)}/mês</strong></div>
     </div>)}</div>
    </>:<div className="empty"><Lightbulb size={29}/><p>Não há histórico suficiente de despesas revisáveis para sugerir cortes com segurança. Continue registrando seus gastos e voltaremos a comparar os próximos meses.</p></div>}
+   {insights.recurringReviews.length>0&&<>
+    <h3 className="insight-subheading">Cobranças fixas que merecem revisão</h3>
+    <p className="small-hint">Estas despesas cadastradas podem ser revistas mesmo sem histórico de vários meses. Verifique uso, planos alternativos ou negociação.</p>
+    <div className="opportunity-grid">{insights.recurringReviews.map(r=><div className="opportunity-item" key={r.id}>
+     <div className="line-between"><strong>{r.description}</strong><span>{r.category}</span></div>
+     <p>Compromisso mensal: <strong>{money(r.amountCents)}</strong></p>
+     <p>Confira se o serviço ainda é necessário ou se há opções mais econômicas.</p>
+     <div className="opportunity-saving"><span>Se reduzir 10% no preço</span><strong>{money(r.illustrativeSavingsCents)}/mês</strong></div>
+    </div>)}</div>
+   </>}
    <p className="small-hint">Os cortes são hipóteses para análise. Não recomendamos reduzir medicamentos, alimentação básica, contas essenciais ou obrigações financeiras sem avaliar consequências.</p>
   </section>
   <section className="panel">
