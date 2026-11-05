@@ -1,10 +1,11 @@
 import {ArrowDownRight, ArrowUpRight, CreditCard, Plus, RotateCcw, X} from 'lucide-react';
-import type {Recurring, Tx} from './types';
-import {money, monthName, today} from './finance';
+import type {Card, Recurring, Tx} from './types';
+import {money, monthName, today, isoMonth, recurringDueDateForCharge} from './finance';
 
 type Props={
   rules:Recurring[];
   transactions:Tx[];
+  cards:Card[];
   uid:string;
   month:string;
   onNewFixed:(kind:'income'|'expense')=>void;
@@ -16,7 +17,7 @@ type Props={
   onGenerate:()=>void;
 };
 
-export default function FixedCommitments({rules,transactions,uid,month,onNewFixed,onEditFixed,onToggleFixed,onRemoveFixed,onAdjustFixed,onNewInstallment,onGenerate}:Props){
+export default function FixedCommitments({rules,transactions,cards,uid,month,onNewFixed,onEditFixed,onToggleFixed,onRemoveFixed,onAdjustFixed,onNewInstallment,onGenerate}:Props){
  const active=rules.filter(r=>r.is_active!==false&&r.start_month<=month&&(!r.end_month||r.end_month>=month));
  const groups=new Map<string,Tx[]>();
  for(const t of transactions){
@@ -33,7 +34,7 @@ export default function FixedCommitments({rules,transactions,uid,month,onNewFixe
 
  return <>
   <div className="section-intro">
-   <p>Cadastre salários e contas fixas, como luz e água, com valores mensais fixos ou variáveis. Parcelamentos podem ter qualquer quantidade positiva de parcelas, no cartão ou fora dele.</p>
+   <p>Cadastre salários, contas mensais, assinaturas e cobranças automáticas no cartão. Para despesas fixas, escolha uma conta bancária ou um cartão de crédito; o vencimento no cartão segue a fatura.</p>
    <div className="panel-actions">
     <button className="secondary" onClick={()=>onNewFixed('income')}><Plus size={16}/> Receita fixa</button>
     <button className="secondary" onClick={()=>onNewFixed('expense')}><Plus size={16}/> Despesa fixa</button>
@@ -49,11 +50,12 @@ export default function FixedCommitments({rules,transactions,uid,month,onNewFixe
    <div className="panel-head"><div><h2>{kind==='income'?'Receitas fixas':'Despesas fixas'}</h2><p>{kind==='income'?'Salário, renda recorrente e aluguéis recebidos':'Aluguel, condomínio, energia, internet e assinaturas'}</p></div>
     <button className="secondary small" onClick={()=>onNewFixed(kind)}><Plus size={15}/> Adicionar</button></div>
    <div className="recurring-list">
-   {rules.filter(r=>r.type===kind).map(r=>{const actual=transactions.find(t=>t.recurring_rule_id===r.id&&t.due_date.startsWith(month));return <div className="recurring-row fixed-row" key={r.id}>
+   {rules.filter(r=>r.type===kind).map(r=>{const actual=transactions.find(t=>t.recurring_rule_id===r.id&&isoMonth(t.transaction_date)===month);const card=cards.find(c=>c.id===r.card_id);const invoiceDue=actual?.due_date||recurringDueDateForCharge(r,month,cards,transactions);return <div className="recurring-row fixed-row" key={r.id}>
     <span className="icon-badge teal">{kind==='income'?<ArrowDownRight size={17}/>:<ArrowUpRight size={17}/>}</span>
     <div className="fixed-details">
      <strong>{r.description}</strong>
      <small>Dia {r.day_of_month} · {r.category} · Início {monthName(r.start_month)} {r.end_month?`· Até ${monthName(r.end_month)}`:''}{r.amount_mode==='variable'?' · Valor variável':''}</small>
+     {r.card_id&&<small><CreditCard size={13} style={{verticalAlign:'middle',marginRight:5}}/>{card?`Cartão: ${card.name}`:'Cartão privado do responsável'} · {actual||card?`Fatura ${monthName(isoMonth(invoiceDue))}`:'Fatura a confirmar após a primeira cobrança'}</small>}
      <div className="fixed-tags"><span className={`tag ${r.scope}`}>{r.scope==='shared'?'Casal':'Individual'}</span><span className={`status ${r.is_active===false?'pending':'paid'}`}>{r.is_active===false?'Pausada':'Ativa'}</span></div>
     </div>
     <div className="fixed-amount"><strong className={kind==='income'?'positive':''}>{kind==='income'?'+':'−'} {money(actual?.amount_cents??r.amount_cents)}</strong><small>{r.amount_mode==='variable'?(actual?'valor deste mês':'estimativa mensal'):'por mês'}</small></div>
