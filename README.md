@@ -1,10 +1,8 @@
 # Meu Financeiro
 
-Aplicação de gestão financeira pessoal e compartilhada do casal.
+Aplicação web para gestão financeira individual e compartilhada do casal. Inclui contas, receitas e despesas, cartões/parcelas, orçamentos por categoria, metas, alertas, comparativos e previsão de 12 meses.
 
-Módulos: contas, lançamentos, cartões e parcelas, orçamentos por categoria, metas, alertas, comparativos e projeção de 12 meses.
-
-## Execução local
+## Execução
 
 ```bash
 npm install
@@ -13,8 +11,8 @@ npm run build
 npm run dev
 ```
 
-## Configuração
+## Supabase
 
-Crie um projeto Supabase pessoal independente, execute `supabase/001_initial.sql` nesse projeto novo e forneça `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY` usando o arquivo `.env.example`. **Nunca** envie `service_role`, segredos ou dados financeiros ao repositório.
+Execute o arquivo `supabase/001_initial.sql` **somente no projeto pessoal, vazio e independente**, e configure a URL e a chave publicável conforme `.env.example`.
 
-Esta versão ainda precisa de testes de integração com dois usuários e implantação segura antes de receber dados financeiros reais.
+Nunca faça commit de `.env`, chaves `service_role`, senhas ou dados pessoais. Antes de usar dados reais, valide as políticas RLS com dois usuários e conclua a integração e o deploy.

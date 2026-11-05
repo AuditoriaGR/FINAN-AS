@@ -1,0 +1,15 @@
+export type Scope = 'private' | 'shared';
+export type MoneyType = 'income' | 'expense';
+export type Account = { id: string; owner_id: string; household_id: string | null; scope: Scope; name: string; kind: string; opening_balance_cents: number; created_at?: string };
+export type Card = { id: string; owner_id: string; household_id: string | null; scope: Scope; name: string; credit_limit_cents: number; closing_day: number; due_day: number; created_at?: string };
+export type Tx = { id: string; owner_id: string; household_id: string | null; scope: Scope; description: string; type: MoneyType; category: string; amount_cents: number; transaction_date: string; due_date: string; paid_at: string | null; account_id: string | null; card_id: string | null; installment_group_id: string | null; installment_number: number | null; installment_total: number | null; recurring_rule_id: string | null; created_at?: string };
+export type Budget = { id:string; owner_id:string; household_id:string|null; scope:Scope; category:string; month:string; amount_cents:number };
+export type Goal = {id:string;owner_id:string;household_id:string|null;scope:Scope;name:string;target_cents:number;deadline:string|null;created_at?:string};
+export type Contribution = {id:string;goal_id:string;owner_id:string;amount_cents:number;created_at:string};
+export type Recurring = {id:string;owner_id:string;household_id:string|null;scope:Scope;type:MoneyType;description:string;category:string;amount_cents:number;day_of_month:number;account_id:string|null;start_month:string;end_month:string|null;created_at?:string};
+export type CardPayment = {id:string;card_id:string;owner_id:string;account_id:string;statement_month:string;amount_cents:number;paid_at:string};
+export type Member = {household_id:string;user_id:string;role:string;display_name:string;joined_at?:string};
+export type Household = {id:string;name:string;created_by:string};
+export type Tables = {accounts:Account[];credit_cards:Card[];transactions:Tx[];category_budgets:Budget[];financial_goals:Goal[];goal_contributions:Contribution[];recurring_rules:Recurring[];card_payments:CardPayment[];household_members:Member[]};
+export const blankData:Tables={accounts:[],credit_cards:[],transactions:[],category_budgets:[],financial_goals:[],goal_contributions:[],recurring_rules:[],card_payments:[],household_members:[]};
+export const categories=['Moradia','Supermercado','Alimentação','Transporte','Saúde','Educação','Lazer','Assinaturas','Compras','Viagem','Investimentos','Outros','Salário','Renda extra'];
