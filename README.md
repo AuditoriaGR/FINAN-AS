@@ -1,48 +1,33 @@
-# Meu Financeiro — MVP 1.1
+# Meu Financeiro — aplicativo de planejamento do casal
 
-Aplicação de controle financeiro pessoal e do casal, com registros **individuais** e **compartilhados**.
+**Aplicação em produção:** https://meu-financeiro-casal.vercel.app  
+**Supabase pessoal:** https://supabase.com/dashboard/project/bpdorktzzsebjcnyuqah
 
-## Funcionalidades incluídas no código
+## Recursos
 
-- Autenticação por e-mail e senha, espaço do casal e convite único com validade de 7 dias.
-- Contas bancárias e saldos; receitas, despesas e status de pagamento.
-- Cartões de crédito, compras parceladas e pagamentos parciais ou totais de faturas.
-- Orçamento por categoria, metas e aportes.
-- Recorrências, alertas financeiros, comparações e projeção dos próximos 12 meses.
-- Exportação CSV e interface adaptada a celulares e computadores.
+- Acesso por conta, dados individuais e compartilhados com políticas RLS.
+- Receitas e despesas, contas, cartões, faturas e parcelamentos.
+- Receita e despesa fixa mensal, com valor fixo ou variável, em conta ou cartão.
+- Orçamentos por categoria, limite consolidado dos cartões, metas e alertas.
+- **Planejamento protegido de 12 meses:** limites por categoria são pisos mensais de despesa. O último orçamento válido continua nos meses seguintes até uma nova configuração. Compromissos já registrados reduzem o complemento reservado da categoria, evitando duplicar a despesa.
+- **Reserva de cartões:** o teto consolidado é levado à projeção como reserva adicional quando ainda não está coberto por gastos reconhecidos e reservas das categorias habitualmente pagas em cartão. É estimativa conservadora, não a fatura futura cobrada pelo banco.
+- **Simulador de compras sem gravar dados:** informa compra à vista ou parcelada, valor total ou por parcela, mês, categoria e cartão, calcula os próximos 12 meses novamente e identifica déficits, estouros de categoria e de teto de cartões. Quando há prestações além dos 12 meses, a análise é explicitamente **parcial**, não uma autorização para comprar.
+- **Tendências e economia:** despesas realizadas nos últimos seis meses completos, comparação por categorias revisáveis, hipóteses ilustrativas de redução de 10%, compromissos fixos para revisão e indicador preliminar da margem projetada.
+- Exportação CSV e interface responsiva.
 
-## Supabase pessoal — instalado em 05/11/2026
+## Premissas importantes
 
-**Projeto exclusivo:** [Finanças — bpdorktzzsebjcnyuqah](https://supabase.com/dashboard/project/bpdorktzzsebjcnyuqah)
+- Um **orçamento por categoria de R$ 800** gera pelo menos R$ 800 de despesa planejada em cada mês, salvo mudança programada. Se já foram reconhecidos R$ 500 naquela categoria, só se adicionam R$ 300 de reserva.
+- O limite de cartão não é uma despesa obrigatória: é uma **reserva de planejamento**. Como a alocação futura entre conta e cartão nem sempre é conhecida, o aplicativo usa o histórico de meios de pagamento para reduzir possíveis sobreposições. Revise os resultados antes de tomar decisões.
+- O **resultado acumulado** soma movimentos projetados desde o mês selecionado e **não representa saldo em conta**. Cadastre salários e demais recebimentos futuros para tornar as simulações mais úteis.
+- Tendências históricas usam meses encerrados; meses sem registros não podem ser interpretados automaticamente como ausência de despesas.
+- O simulador não insere transações reais nem reservas no banco.
+- Limites consolidados de cartões são individuais e incluem apenas cartões acessíveis ao titular; não revelam cartões privados de outro integrante.
+- O indicador de margem mensal é orientativo, não avaliação profissional de crédito ou investimento.
 
-- A migração `supabase/001_initial.sql` foi aplicada com sucesso nesse projeto.
-- As 11 tabelas foram criadas, com RLS ativada em todas elas.
-- Um teste transacional com dois usuários temporários confirmou que o segundo não consegue ler uma conta/despesa privada do primeiro, mas consegue ler uma despesa compartilhada. O teste foi revertido integralmente, sem deixar dados reais ou de exemplo.
-- O Supabase Security Advisor emitiu **3 avisos** referentes a funções `SECURITY DEFINER` destinadas à criação do casal e aos convites. Todas verificam o usuário autenticado e as condições de autorização; ainda precisam de auditoria e teste de ponta a ponta antes de uso sensível.
-- Nenhum usuário real foi cadastrado; nenhuma movimentação financeira real foi armazenada.
+## Código e implantação
 
-**Atenção:** essa instalação não significa que a interface já esteja publicada.
-
-## Configuração para implantação
-
-1. Disponibilize a aplicação em uma conta **pessoal** de hospedagem (não na Vercel da empresa GR).
-2. Importe este repositório como projeto **Vite + React**.
-3. Configure as variáveis de ambiente no painel da hospedagem, nunca no código-fonte:
-
-   ```env
-   VITE_SUPABASE_URL=https://bpdorktzzsebjcnyuqah.supabase.co
-   VITE_SUPABASE_PUBLISHABLE_KEY=<chave publicável obtida no Supabase>
-   ```
-
-   Use somente uma chave `sb_publishable_...`, jamais `service_role`, `sb_secret_...` ou token administrativo.
-4. Execute `npm install`, `npm run test` e `npm run build`; publique só quando esses comandos concluírem sem erro.
-5. No Supabase Auth, configure o URL definitivo da aplicação e os Redirect URLs permitidos, usando **apenas os domínios reais** do app.
-6. Cadastre o primeiro usuário, crie o espaço do casal, gere um convite na página Configurações e aceite-o com o segundo usuário.
-7. Teste criação de dados privados e compartilhados, vencimentos, parcelas, saldos e permissões em dois navegadores antes de inserir valores financeiros reais.
-
-## Desenvolvimento local
-
-Node.js 22+.
+O projeto utiliza React, TypeScript, Vite, Supabase e Vercel.
 
 ```bash
 npm install
@@ -51,21 +36,31 @@ npm run build
 npm run dev
 ```
 
-Use o arquivo `.env.example` como modelo (o arquivo `.env` real deve ser mantido fora do Git).
+Variáveis necessárias, mantidas fora do Git:
 
-## Limitações atuais
+```env
+VITE_SUPABASE_URL=https://bpdorktzzsebjcnyuqah.supabase.co
+VITE_SUPABASE_PUBLISHABLE_KEY=<chave publicável, obtida no Supabase>
+```
 
-A compilação completa do frontend e o teste ponta a ponta no navegador ainda **não foram validados** por limitação de acesso ao registry npm no ambiente de desenvolvimento. O projeto tem suíte de testes unitários e configuração de CI, mas o resultado do GitHub Actions ainda está pendente de conferência.
+**Nunca** inserir `service_role`, `sb_secret_`, senhas ou extratos no repositório.
 
-Não inclui conciliação bancária automática, exportação de todos os módulos, estornos de fatura, notificações push ou backup automatizado. O histórico consolidado apresenta os registros próprios e os compartilhados; dados privados de outro integrante continuam ocultos.
+As alterações do banco estão versionadas em `supabase/`; a migração `005_card_spending_limits.sql` adicionou o orçamento consolidado com RLS. As projeções com pisos mensais e o simulador são cálculos de frontend e não necessitam de alteração nas tabelas existentes.
 
-**Segurança:** o código está atualmente em um repositório **público** da conta `AuditoriaGR`. Não armazene nele credenciais, segredos, extratos, dados financeiros reais ou informações pessoais. Prefira transferi-lo para um repositório pessoal privado antes do uso diário.
+## Qualidade e limites
+
+A publicação automática da Vercel executa testes Vitest e compilação TypeScript/Vite antes de disponibilizar a versão. Os testes automatizados **não substituem** testes ponta a ponta de cadastro real, e-mail e dois navegadores autenticados. Antes de decisões importantes, valide os lançamentos e revise as estimativas.
+
+O projeto ainda não oferece conciliação bancária automática, taxas reais de empréstimos, notificações push nem backups automatizados. Informações preenchidas pelo usuário podem estar incompletas.
+
+**Segurança do código:** o repositório atual `AuditoriaGR/FINAN-AS` está público. Não armazene dados financeiros reais, extratos ou segredos nesse repositório. O banco Supabase utilizado pelo app é o projeto pessoal `bpdorktzzsebjcnyuqah`, separado dos projetos empresariais.
 
 ## Arquivos principais
 
-- `src/App.tsx`: telas e formulários
-- `src/finance.ts`: cálculos monetários e previsões
-- `src/supabase.ts`: conexão Supabase pelo navegador
-- `supabase/001_initial.sql`: esquema, convites e políticas RLS
-- `tests/finance.test.ts`: testes unitários das regras financeiras
-- `.github/workflows/ci.yml`: testes e build no GitHub Actions
+- `src/App.tsx`: navegação, formulários, orçamento e integrações.
+- `src/finance.ts`: cálculos financeiros, cartão e recorrências.
+- `src/planning.ts`: pisos futuros, projeção protegida, simulação e análise de gastos.
+- `src/FuturePlanning.tsx`: planejamento e simulador de compras.
+- `src/SpendingInsightsPanel.tsx`: tendências e possibilidades de economia.
+- `tests/finance.test.ts` e `tests/planning.test.ts`: testes automatizados.
+- `supabase/`: migrações e políticas de segurança.
