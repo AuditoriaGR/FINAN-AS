@@ -262,7 +262,7 @@ export function spendingInsights(data:Tables,view:PlanningView,uid:string,anchor
  const rows=months.map(month=>{
   const entries=txs.filter(t=>isoMonth(t.due_date)===month);
   // Compras feitas no cartão são compromissos reais, mesmo sem 'pago'.
-  const recognized=entries.filter(t=>t.type==='expense'&&(!!t.card_id||!!t.paid_at))
+  const recognized=entries.filter(t=>t.type==='expense'&&(!!t.card_id||!!t.paid_at||!!t.in_opening_balance))
     .reduce((s,t)=>s+t.amount_cents,0);
   // Inclui o saldo oficial das faturas com valor real informado, sem duplicar lançamentos.
   const visibleCards=visible(data.credit_cards,view,uid);
@@ -273,7 +273,7 @@ export function spendingInsights(data:Tables,view:PlanningView,uid:string,anchor
    return sum+st.actual_amount_cents-detail;
   },0);
   const expenseCents=recognized+adjustment;
-  const incomeCents=entries.filter(t=>t.type==='income'&&!!t.paid_at).reduce((s,t)=>s+t.amount_cents,0);
+  const incomeCents=entries.filter(t=>t.type==='income'&&(!!t.paid_at||!!t.in_opening_balance)).reduce((s,t)=>s+t.amount_cents,0);
   return {month,expenseCents,incomeCents};
  });
  const historicalMonths=rows.filter(r=>r.expenseCents>0||r.incomeCents>0).length;
