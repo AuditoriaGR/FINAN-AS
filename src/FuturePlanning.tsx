@@ -3,7 +3,7 @@ import {Calculator,CheckCircle2,AlertTriangle,ShieldCheck,ShoppingBag} from 'luc
 import type {Tables} from './types';
 import {categories} from './types';
 import {cents,money,monthName,visible} from './finance';
-import {protectedProjection,simulatePurchase,type PlanningView} from './planning';
+import {projectedWithCarryForward,simulatePurchase,type PlanningView} from './planning';
 
 type Props={data:Tables;view:PlanningView;uid:string;month:string};
 export default function FuturePlanning({data,view,uid,month}:Props){
@@ -16,7 +16,7 @@ export default function FuturePlanning({data,view,uid,month}:Props){
  const [category,setCategory]=useState('Compras');
  const [cardId,setCardId]=useState('');
  const cards=visible(data.credit_cards,view,uid);
- const projected=useMemo(()=>protectedProjection(data,view,uid,month,12),[data,view,uid,month]);
+ const projected=useMemo(()=>projectedWithCarryForward(data,view,uid,month,12),[data,view,uid,month]);
  const sim=useMemo(()=>{
   try{
    const amountCents=cents(cost);
@@ -43,7 +43,7 @@ export default function FuturePlanning({data,view,uid,month}:Props){
   <section className="panel">
    <div className="panel-head"><div><h2>Projeção financeira protegida</h2><p>Receitas e compromissos registrados + piso do orçamento + reserva adicional de cartões</p></div><span className="top-badge">12 meses</span></div>
    <div className="table-wrap"><table><thead><tr>
-    <th>Mês</th><th className="text-right">Receitas</th><th className="text-right">Já previsto</th><th className="text-right">Reserva categorias</th><th className="text-right">Reserva cartões</th><th className="text-right">Total despesas</th><th className="text-right">Resultado</th><th className="text-right">Acumulado*</th>
+    <th>Mês</th><th className="text-right">Receitas</th><th className="text-right">Já previsto</th><th className="text-right">Reserva categorias</th><th className="text-right">Reserva cartões</th><th className="text-right">Total despesas</th><th className="text-right">Resultado do mês</th><th className="text-right">Saldo acumulado*</th>
    </tr></thead><tbody>{projected.map(r=><tr key={r.month}>
     <td><strong>{monthName(r.month)}</strong></td>
     <td className="text-right positive">{money(r.incomeCents)}</td>
@@ -54,7 +54,7 @@ export default function FuturePlanning({data,view,uid,month}:Props){
     <td className={`text-right strong ${r.balanceCents<0?'danger-text':'positive'}`}>{money(r.balanceCents)}</td>
     <td className={`text-right ${r.cumulativeCents<0?'danger-text':''}`}>{money(r.cumulativeCents)}</td>
    </tr>)}</tbody></table></div>
-   <p className="small-hint">*O acumulado soma apenas os resultados projetados a partir do mês selecionado; não representa o saldo das contas bancárias. A previsão depende de receitas, despesas e limites cadastrados. O teto do cartão é um valor reservado para planejamento, não uma cobrança bancária.</p>
+   <p className="small-hint">*O saldo acumulado transporta a sobra ou o déficit dos meses anteriores, começando pelo mês atual. Exemplo: sobra de R$ 1.000 em dezembro + R$ 80 em janeiro = R$ 1.080 acumulados em janeiro. Não inclui automaticamente o saldo bancário real. A previsão depende de receitas, despesas e limites cadastrados; o teto dos cartões é reserva de planejamento, não cobrança bancária.</p>
   </section>
   <section className="panel">
    <div className="panel-head"><div><h2>Limites das categorias considerados no futuro</h2><p>Exemplo: orçamento de R$ 800, gastos já previstos de R$ 300, reserva adicional de R$ 500.</p></div></div>
@@ -95,8 +95,8 @@ export default function FuturePlanning({data,view,uid,month}:Props){
      <div><small>Absorvido por reservas existentes*</small><strong>{money(sim.result.absorbedCents)}</strong></div>
      <div><small>Primeiro vencimento</small><strong>{monthName(sim.result.firstDueMonth)}</strong></div>
     </div>
-    <div className="table-wrap"><table><thead><tr><th>Mês</th><th className="text-right">Resultado antes</th><th className="text-right">Resultado após compra</th><th className="text-right">Efeito na despesa</th></tr></thead><tbody>
-     {sim.result.withPurchase.map((row,i)=><tr key={row.month}><td>{monthName(row.month)}</td><td className="text-right">{money(sim.result!.baseline[i].balanceCents)}</td><td className={`text-right strong ${row.balanceCents<0?'danger-text':'positive'}`}>{money(row.balanceCents)}</td><td className="text-right">{money(Math.max(0,row.expenseCents-sim.result!.baseline[i].expenseCents))}</td></tr>)}
+    <div className="table-wrap"><table><thead><tr><th>Mês</th><th className="text-right">Resultado mensal antes</th><th className="text-right">Resultado mensal após</th><th className="text-right">Saldo acumulado após</th><th className="text-right">Efeito na despesa</th></tr></thead><tbody>
+     {sim.result.withPurchase.map((row,i)=><tr key={row.month}><td>{monthName(row.month)}</td><td className="text-right">{money(sim.result!.baseline[i].balanceCents)}</td><td className={`text-right strong ${row.balanceCents<0?'danger-text':'positive'}`}>{money(row.balanceCents)}</td><td className={`text-right strong ${row.cumulativeCents<0?'danger-text':'positive'}`}>{money(row.cumulativeCents)}</td><td className="text-right">{money(Math.max(0,row.expenseCents-sim.result!.baseline[i].expenseCents))}</td></tr>)}
     </tbody></table></div>
     {sim.result.extendsBeyondHorizon&&<p className="scenario-note"><AlertTriangle size={15}/> Algumas parcelas vencem depois do horizonte analisado. A compra exige planejamento adicional.</p>}
     {sim.result.monthsOverCardCap.length>0&&<p className="scenario-note"><AlertTriangle size={15}/> Teto de cartões ultrapassado em {sim.result.monthsOverCardCap.map(monthName).join(', ')}.</p>}
