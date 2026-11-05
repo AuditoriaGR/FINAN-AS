@@ -185,6 +185,7 @@ export type SpendingInsights={
  months:{month:string;incomeCents:number;expenseCents:number}[];
  averageExpenseCents:number;averageIncomeCents:number;
  opportunities:{category:string;averageCents:number;illustrativeSavingsCents:number;growthPercent:number|null;message:string}[];
+ recurringReviews:{id:string;description:string;category:string;amountCents:number;illustrativeSavingsCents:number}[];
  signal:'insufficient'|'negative'|'attention'|'positive';
  projectedSurplusPercent:number|null;
  notes:string[];
@@ -226,6 +227,13 @@ export function spendingInsights(data:Tables,view:PlanningView,uid:string,anchor
   }
   opportunities.sort((a,b)=>b.illustrativeSavingsCents-a.illustrativeSavingsCents);
  }
+ const recurringReviews=visible(data.recurring_rules,view,uid)
+  .filter(r=>r.type==='expense'&&r.is_active!==false&&r.start_month<=anchor
+    &&(!r.end_month||r.end_month>=anchor)
+    &&['Assinaturas','Lazer','Compras'].includes(r.category))
+  .map(r=>({id:r.id,description:r.description,category:r.category,
+    amountCents:r.amount_cents,illustrativeSavingsCents:Math.round(r.amount_cents*.1)}))
+  .sort((a,b)=>b.amountCents-a.amountCents).slice(0,5);
  const next=protectedProjection(data,view,uid,anchor,3);
  const totalIncome=next.reduce((s,r)=>s+r.incomeCents,0);
  const totalExpense=next.reduce((s,r)=>s+r.expenseCents,0);
@@ -240,5 +248,5 @@ export function spendingInsights(data:Tables,view:PlanningView,uid:string,anchor
  if(historicalMonths<3)notes.unshift('Menos de três meses encerrados com movimentações: ainda não há histórico suficiente para tendências confiáveis.');
  if(totalIncome===0)notes.unshift('Cadastre suas receitas futuras para avaliar a margem financeira com segurança.');
  return {historicalMonths,months:rows,averageExpenseCents,averageIncomeCents,
-  opportunities:opportunities.slice(0,5),signal,projectedSurplusPercent,notes};
+  opportunities:opportunities.slice(0,5),recurringReviews,signal,projectedSurplusPercent,notes};
 }
