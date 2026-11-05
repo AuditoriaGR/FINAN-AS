@@ -57,6 +57,41 @@ describe('saldo inicial e finanças compartilhadas',()=>{
   expect(rui[1].knownExpenseCents).toBe(117000);
   expect(rui[1].cumulativeCents).toBe(1533000);
  });
+ it('pagamento já debitado do banco não volta como despesa futura',()=>{
+  const data:Tables={...blankData,accounts:[
+   {id:'bank',owner_id:uid,household_id:house,scope:'shared',name:'Banco',kind:'Corrente',opening_balance_cents:100000}
+  ],transactions:[
+   tx('paid','2026-11','Moradia',20000,{scope:'shared',household_id:house,
+     account_id:'bank',paid_at:'2026-11-05'})
+  ]};
+  const result=projectedWithCarryForward(data,'all',uid,'2026-11',1,'2026-11')[0];
+  expect(result.knownExpenseCents).toBe(0);
+  expect(result.cumulativeCents).toBe(80000);
+ });
+ it('gasto já pago reduz o complemento do orçamento sem sair duas vezes do caixa',()=>{
+  const data:Tables={...blankData,accounts:[
+   {id:'bank',owner_id:uid,household_id:house,scope:'shared',name:'Banco',kind:'Corrente',opening_balance_cents:100000}
+  ],transactions:[
+   tx('paid','2026-11','Supermercado',20000,{scope:'shared',household_id:house,
+     account_id:'bank',paid_at:'2026-11-05'})
+  ],category_budgets:[budget('b','2026-11','Supermercado',50000,{scope:'shared',household_id:house})]};
+  const result=projectedWithCarryForward(data,'all',uid,'2026-11',1,'2026-11')[0];
+  expect(result.budgetReserveCents).toBe(30000);
+  expect(result.cumulativeCents).toBe(50000);
+ });
+ it('fatura parcialmente paga reduz saldo de conta e apenas o restante é projetado',()=>{
+  const data:Tables={...blankData,accounts:[
+   {id:'bank',owner_id:uid,household_id:house,scope:'shared',name:'Banco',kind:'Corrente',opening_balance_cents:100000}
+  ],credit_cards:[{id:'card',owner_id:uid,household_id:house,scope:'shared',
+   name:'Cartão do casal',credit_limit_cents:100000,closing_day:20,due_day:5}],
+   transactions:[tx('charge','2026-11','Compras',30000,{scope:'shared',household_id:house,
+    card_id:'card',paid_at:null})],
+   card_payments:[{id:'payment',owner_id:uid,card_id:'card',account_id:'bank',
+    statement_month:'2026-11',amount_cents:10000,paid_at:'2026-11-05'}]};
+  const result=projectedWithCarryForward(data,'all',uid,'2026-11',1,'2026-11')[0];
+  expect(result.knownExpenseCents).toBe(20000);
+  expect(result.cumulativeCents).toBe(70000);
+ });
  it('movimentos já no saldo inicial não são acrescentados de novo quando marcados pagos',()=>{
   const data:Tables={...blankData,accounts:[
    {id:'a',owner_id:uid,household_id:house,scope:'shared',name:'Conta',kind:'Corrente',opening_balance_cents:100000}
