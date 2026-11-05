@@ -6,7 +6,7 @@ import {db,configured} from './supabase';
 import {demoData,demoHousehold,demoUser} from './demo';
 import FixedCommitments from './FixedCommitments';
 import {blankData,categories,type Tables,type Tx,type Scope,type Household} from './types';
-import {money,cents,monthShift,dueDate,today,monthName,visible,totals,budgetStatus,goalProgress,accountBalance,cardInvoice,forecast,generateAlerts,installmentPlan,installmentSummary,invoiceMonthForPurchase,isoMonth} from './finance';
+import {money,cents,monthShift,dueDate,today,monthName,visible,totals,budgetStatus,goalProgress,accountBalance,cardInvoice,forecast,generateAlerts,installmentPlan,installmentSummary,invoiceMonthForPurchase,isoMonth,recurringDueDateForCharge} from './finance';
 
 type Page='dashboard'|'transactions'|'fixed'|'budgets'|'goals'|'cards'|'accounts'|'planning'|'comparison'|'alerts'|'settings';
 type Modal='transaction'|'budget'|'goal'|'contribution'|'account'|'card'|'recurring'|'adjustfixed'|'payment'|null;
@@ -68,8 +68,8 @@ export default function App(){
   setModal(m);setContext(id);
   const initial={scope:household?'shared':'private',type:'expense',category:'Supermercado',date:today(),due:today(),month,amount:'',installments:'1',installmentAmountMode:'total',fixedAmountMode:'fixed',day:'10',closing:'2',dueDay:'12',kind:'Conta corrente',deadline:'',name:'',description:'',paid:'no',...(m==='account'?{amount:'0,00'}:{})};
   const existing=(m==='recurring'||m==='adjustfixed')&&id?data.recurring_rules.find(r=>r.id===id):null;
-  const actual=m==='adjustfixed'&&existing?data.transactions.find(t=>t.recurring_rule_id===existing.id&&isoMonth(t.due_date)===month):null;
-  setForm(existing?{...initial,scope:existing.scope,type:existing.type,category:existing.category,description:existing.description,day:String(existing.day_of_month),month:existing.start_month,endMonth:existing.end_month||'',paymentTarget:existing.account_id||'',fixedAmountMode:existing.amount_mode||'fixed',amount:((actual?.amount_cents??existing.amount_cents)/100).toFixed(2).replace('.',',')}:initial);
+  const actual=m==='adjustfixed'&&existing?data.transactions.find(t=>t.recurring_rule_id===existing.id&&isoMonth(t.transaction_date)===month):null;
+  setForm(existing?{...initial,scope:existing.scope,type:existing.type,category:existing.category,description:existing.description,day:String(existing.day_of_month),month:existing.start_month,endMonth:existing.end_month||'',paymentTarget:existing.card_id||existing.account_id||'',fixedAmountMode:existing.amount_mode||'fixed',amount:((actual?.amount_cents??existing.amount_cents)/100).toFixed(2).replace('.',',')}:initial);
  };
  const f=(key:string,value:string)=>setForm(old=>({...old,[key]:value}));
  const scopeProps=()=>({owner_id:uid,scope:form.scope||'private',household_id:form.scope==='shared'?household?.id:null});
@@ -112,7 +112,9 @@ export default function App(){
   else if(modal==='card')okay=await create('credit_cards',{...scopeProps(),name:form.name,credit_limit_cents:amount,closing_day:Number(form.closing),due_day:Number(form.dueDay)});
   else if(modal==='recurring'){
    if(form.endMonth&&form.endMonth<form.month)throw Error('O fim não pode ser anterior ao início');
-   const changes={...scopeProps(),type:form.type,description:form.description,category:form.category,amount_cents:amount,amount_mode:form.fixedAmountMode||'fixed',day_of_month:Number(form.day),account_id:form.paymentTarget||null,start_month:form.month,end_month:form.endMonth||null};
+   const card=data.credit_cards.find(c=>c.id===form.paymentTarget);
+   if(card&&form.type!=='expense')throw Error('Somente despesas fixas podem ser vinculadas a cartão de crédito');
+   const changes={...scopeProps(),type:form.type,description:form.description,category:form.category,amount_cents:amount,amount_mode:form.fixedAmountMode||'fixed',day_of_month:Number(form.day),account_id:card?null:(form.paymentTarget||null),card_id:card?.id||null,start_month:form.month,end_month:form.endMonth||null};
    okay=context?await patch('recurring_rules',context,changes):await create('recurring_rules',{...changes,is_active:true});
    if(okay&&db){const r=await db.rpc('materialize_recurring_month',{p_month:month});if(r.error)saveNotice(r.error.message);else await refresh()}
   }
@@ -124,11 +126,11 @@ export default function App(){
    if(db){
     const generated=await db.rpc('materialize_recurring_month',{p_month:month});
     if(generated.error)throw Error(generated.error.message);
-    const result=await db.from('transactions').select('id').eq('recurring_rule_id',context).gte('due_date',month+'-01').lt('due_date',monthShift(month,1)+'-01').maybeSingle();
+    const result=await db.from('transactions').select('id').eq('recurring_rule_id',context).gte('transaction_date',month+'-01').lt('transaction_date',monthShift(month,1)+'-01').maybeSingle();
     if(result.error||!result.data)throw Error(result.error?.message||'Lançamento mensal não encontrado');
     okay=await patch('transactions',result.data.id,{amount_cents:amount});
    }else{
-    const tx=data.transactions.find(t=>t.recurring_rule_id===context&&isoMonth(t.due_date)===month);
+    const tx=data.transactions.find(t=>t.recurring_rule_id===context&&isoMonth(t.transaction_date)===month);
     if(!tx)throw Error('Gere os lançamentos do mês para ajustar o valor');
     okay=await patch('transactions',tx.id,{amount_cents:amount});
    }
@@ -141,7 +143,7 @@ export default function App(){
  const materialize=async()=>{
   if(!db){
    const owned=data.recurring_rules.filter(r=>r.owner_id===uid&&r.is_active!==false&&r.start_month<=month&&(!r.end_month||r.end_month>=month));
-   const entries=owned.filter(r=>!data.transactions.some(t=>t.recurring_rule_id===r.id&&isoMonth(t.due_date)===month)).map(r=>({owner_id:r.owner_id,household_id:r.household_id,scope:r.scope,description:r.description,type:r.type,category:r.category,amount_cents:r.amount_cents,transaction_date:dueDate(month,r.day_of_month),due_date:dueDate(month,r.day_of_month),paid_at:null,account_id:r.account_id,card_id:null,installment_group_id:null,installment_number:null,installment_total:null,recurring_rule_id:r.id}));
+   const entries=owned.filter(r=>!data.transactions.some(t=>t.recurring_rule_id===r.id&&isoMonth(t.transaction_date)===month)).map(r=>({owner_id:r.owner_id,household_id:r.household_id,scope:r.scope,description:r.description,type:r.type,category:r.category,amount_cents:r.amount_cents,transaction_date:dueDate(month,r.day_of_month),due_date:recurringDueDateForCharge(r,month,data.credit_cards,data.transactions),paid_at:null,account_id:r.card_id?null:r.account_id,card_id:r.card_id||null,installment_group_id:null,installment_number:null,installment_total:null,recurring_rule_id:r.id}));
    if(entries.length)await create('transactions',entries);else saveNotice('As receitas e despesas fixas do mês já estão lançadas.');
    return;
   }
@@ -195,6 +197,7 @@ export default function App(){
   {page==='fixed'&&<FixedCommitments
     rules={visible(data.recurring_rules,view,uid)}
     transactions={transactions}
+    cards={cards}
     uid={uid} month={month}
     onNewFixed={kind=>{open('recurring');setForm(old=>({...old,type:kind,category:kind==='income'?'Salário':'Energia elétrica'}))}}
     onEditFixed={id=>open('recurring',id)}
@@ -229,8 +232,8 @@ export default function App(){
     {modal==='goal'&&<Field label="Prazo da meta (opcional)"><input type="date" value={form.deadline||''} onChange={e=>f('deadline',e.target.value)}/></Field>}
     {modal==='card'&&<div className="two-fields"><Field label="Fechamento (dia)"><input type="number" required min={1} max={28} value={form.closing} onChange={e=>f('closing',e.target.value)}/></Field><Field label="Vencimento (dia)"><input type="number" required min={1} max={28} value={form.dueDay} onChange={e=>f('dueDay',e.target.value)}/></Field></div>}
     {modal==='account'&&<Field label="Tipo de conta"><select value={form.kind} onChange={e=>f('kind',e.target.value)}><option>Conta corrente</option><option>Conta poupança</option><option>Dinheiro</option><option>Carteira digital</option><option>Investimentos</option></select></Field>}
-    {modal==='recurring'&&<><Field label="Comportamento do valor mensal"><select value={form.fixedAmountMode||'fixed'} onChange={e=>f('fixedAmountMode',e.target.value)}><option value="fixed">Valor igual em todos os meses (aluguel, salário)</option><option value="variable">Valor varia a cada mês (luz, água, gás)</option></select></Field>{form.fixedAmountMode==='variable'&&<div className="hint-box">Informe um <strong>valor médio estimado</strong> para o planejamento. Quando chegar a conta do mês, use <strong>Informar valor do mês</strong> na área Fixas e parcelas. O valor real substituirá a estimativa apenas daquele mês.</div>}<p className="small-hint">O sistema gera este compromisso mensalmente. Confirme o recebimento ou pagamento nos lançamentos. Mudanças na regra não alteram lançamentos anteriores.</p><div className="two-fields"><Field label="Dia do vencimento/recebimento"><input type="number" required min={1} max={28} value={form.day} onChange={e=>f('day',e.target.value)}/></Field><Field label="Início"><input type="month" required value={form.month} onChange={e=>f('month',e.target.value)}/></Field></div><Field label="Fim (opcional)"><input type="month" value={form.endMonth||''} onChange={e=>f('endMonth',e.target.value)}/></Field><Field label="Conta vinculada"><select value={form.paymentTarget||''} onChange={e=>f('paymentTarget',e.target.value)}><option value="">Sem conta vinculada</option>{accounts.filter(a=>form.scope==='shared'||a.scope==='private').map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></Field></>}
-    {modal==='adjustfixed'&&<div className="hint-box">Você está alterando somente o lançamento de <strong>{monthName(month)}</strong>, sem mudar o valor previsto para outros meses. Marque a despesa como paga na tela Lançamentos quando efetivar o pagamento.</div>}
+    {modal==='recurring'&&<><Field label="Comportamento do valor mensal"><select value={form.fixedAmountMode||'fixed'} onChange={e=>f('fixedAmountMode',e.target.value)}><option value="fixed">Valor igual em todos os meses (aluguel, salário)</option><option value="variable">Valor varia a cada mês (luz, água, gás)</option></select></Field>{form.fixedAmountMode==='variable'&&<div className="hint-box">Informe um <strong>valor médio estimado</strong> para o planejamento. Quando chegar a conta do mês, use <strong>Informar valor do mês</strong> na área Fixas e parcelas. O valor real substituirá a estimativa apenas daquele mês.</div>}<p className="small-hint">O sistema gera este compromisso a cada mês. Para um cartão, a cobrança entra na fatura correspondente; para conta bancária, confirme o pagamento nos lançamentos. Mudanças na regra não alteram lançamentos anteriores.</p><div className="two-fields"><Field label={data.credit_cards.some(c=>c.id===form.paymentTarget)?'Dia da cobrança no cartão':'Dia do vencimento/recebimento'}><input type="number" required min={1} max={28} value={form.day} onChange={e=>f('day',e.target.value)}/></Field><Field label="Início"><input type="month" required value={form.month} onChange={e=>f('month',e.target.value)}/></Field></div><Field label="Fim (opcional)"><input type="month" value={form.endMonth||''} onChange={e=>f('endMonth',e.target.value)}/></Field><Field label="Pagamento ou recebimento"><select value={form.paymentTarget||''} onChange={e=>f('paymentTarget',e.target.value)}><option value="">Sem conta/cartão vinculado</option>{accounts.filter(a=>form.scope==='shared'||a.scope==='private').map(a=><option key={a.id} value={a.id}>Conta: {a.name}</option>)}{form.type==='expense'&&cards.filter(c=>form.scope==='shared'||c.scope==='private').map(c=><option key={c.id} value={c.id}>Cartão: {c.name}</option>)}</select></Field>{data.credit_cards.some(c=>c.id===form.paymentTarget)&&form.type==='expense'&&<div className="hint-box">A cobrança fixa entrará automaticamente na <strong>fatura do cartão</strong>, considerando o dia de fechamento e vencimento. O saldo bancário só será reduzido quando você registrar o pagamento da fatura.</div>}</>}
+    {modal==='adjustfixed'&&<div className="hint-box">Você está alterando somente o valor da cobrança de <strong>{monthName(month)}</strong>. Se estiver vinculada ao cartão, o valor será atualizado na fatura correspondente; o pagamento é feito pela fatura, não como uma despesa separada.</div>}
     {modal==='payment'&&<><Field label="Fatura"><input type="month" required value={form.month} onChange={e=>{f('month',e.target.value);const x=cardInvoice(context,e.target.value,data.transactions,data.card_payments);f('amount',(x.outstanding/100).toFixed(2).replace('.',','))}}/></Field><Field label="Conta de pagamento"><select required value={form.paymentTarget||''} onChange={e=>f('paymentTarget',e.target.value)}><option value="">Selecione a conta</option>{accounts.filter(a=>data.credit_cards.find(c=>c.id===context)?.scope==='shared'||a.scope==='private').map(a=><option key={a.id} value={a.id}>{a.name}</option>)}</select></Field><Field label="Data do pagamento"><input type="date" required value={form.date} onChange={e=>f('date',e.target.value)}/></Field><p className="small-hint">A fatura reduzirá o saldo da conta, sem contabilizar outra despesa.</p></>}
   </div><div className="modal-actions"><button className="secondary" type="button" onClick={()=>setModal(null)}>Cancelar</button><button className="primary" disabled={busy||!Number.isFinite(cents(form.amount||'0'))||(modal!=='account'&&cents(form.amount||'0')<=0)} type="submit">{busy?'Salvando…':'Salvar'} <Check size={16}/></button></div></form></div>}
  </div>
