@@ -38,10 +38,10 @@ export default function FuturePlanning({data,view,uid,month}:Props){
    <div><small>Despesa total protegida · {monthName(month)}</small><strong>{money(current.expenseCents)}</strong><span>Inclui gastos, parcelas, fixos e reservas</span></div>
    <div><small>Reservas adicionais de categorias</small><strong>{money(current.budgetReserveCents)}</strong><span>Somente o que ainda falta para o piso</span></div>
    <div><small>Reserva complementar dos cartões</small><strong>{money(current.cardReserveCents)}</strong><span>{view==='all'?'Sem repetir lançamentos e categorias usadas no cartão':'Aplicada apenas no consolidado acessível'}</span></div>
-   <div><small>Meses com margem negativa</small><strong>{negatives.length}</strong><span>Dentro dos próximos 12 meses</span></div>
+   <div><small>Meses com resultado mensal negativo</small><strong>{negatives.length}</strong><span>Dentro dos próximos 12 meses</span></div>
   </div>
   <section className="panel">
-   <div className="panel-head"><div><h2>Projeção financeira protegida</h2><p>Receitas e compromissos registrados + piso do orçamento + reserva adicional de cartões</p></div><span className="top-badge">12 meses</span></div>
+   <div className="panel-head"><div><h2>Projeção financeira protegida</h2><p>Saldos das contas + receitas e pagamentos ainda previstos + reservas do orçamento</p></div><span className="top-badge">12 meses</span></div>
    <div className="table-wrap"><table><thead><tr>
     <th>Mês</th><th className="text-right">Receitas</th><th className="text-right">Já previsto</th><th className="text-right">Reserva categorias</th><th className="text-right">Reserva cartões</th><th className="text-right">Total despesas</th><th className="text-right">Resultado do mês</th><th className="text-right">Saldo acumulado*</th>
    </tr></thead><tbody>{projected.map(r=><tr key={r.month}>
@@ -54,7 +54,7 @@ export default function FuturePlanning({data,view,uid,month}:Props){
     <td className={`text-right strong ${r.balanceCents<0?'danger-text':'positive'}`}>{money(r.balanceCents)}</td>
     <td className={`text-right ${r.cumulativeCents<0?'danger-text':''}`}>{money(r.cumulativeCents)}</td>
    </tr>)}</tbody></table></div>
-   <p className="small-hint">*O saldo acumulado transporta a sobra ou o déficit dos meses anteriores, começando pelo mês atual. Exemplo: sobra de R$ 1.000 em dezembro + R$ 80 em janeiro = R$ 1.080 acumulados em janeiro. Não inclui automaticamente o saldo bancário real. A previsão depende de receitas, despesas e limites cadastrados; o teto dos cartões é reserva de planejamento, não cobrança bancária.</p>
+   <p className="small-hint">*O saldo acumulado transporta a sobra ou o déficit dos meses anteriores, começando pelo mês atual. Exemplo: sobra de R$ 1.000 em dezembro + R$ 80 em janeiro = R$ 1.080 acumulados em janeiro. Parte do saldo já registrado nas contas do casal; valores já incluídos no saldo inicial não são repetidos. A previsão depende de receitas, despesas e limites cadastrados; o teto dos cartões é reserva de planejamento, não cobrança bancária.</p>
   </section>
   <section className="panel">
    <div className="panel-head"><div><h2>Limites das categorias considerados no futuro</h2><p>Exemplo: orçamento de R$ 800, gastos já previstos de R$ 300, reserva adicional de R$ 500.</p></div></div>
@@ -101,7 +101,7 @@ export default function FuturePlanning({data,view,uid,month}:Props){
     {sim.result.extendsBeyondHorizon&&<p className="scenario-note"><AlertTriangle size={15}/> Algumas parcelas vencem depois do horizonte analisado. A compra exige planejamento adicional.</p>}
     {sim.result.monthsOverCardCap.length>0&&<p className="scenario-note"><AlertTriangle size={15}/> Teto de cartões ultrapassado em {sim.result.monthsOverCardCap.map(monthName).join(', ')}.</p>}
     {sim.result.categoryOverages.length>0&&<p className="scenario-note"><AlertTriangle size={15}/> A categoria {category} ultrapassaria o limite cadastrado em {Array.from(new Set(sim.result.categoryOverages.map(x=>x.month))).map(monthName).join(', ')}.</p>}
-    {sim.result.monthsWithDeficit.length>0&&<p className="scenario-note"><AlertTriangle size={15}/> Resultado mensal negativo em {sim.result.monthsWithDeficit.map(monthName).join(', ')}.</p>}
+    {sim.result.monthsWithDeficit.length>0&&<p className="scenario-note"><AlertTriangle size={15}/> Saldo acumulado abaixo de zero em {sim.result.monthsWithDeficit.map(monthName).join(', ')}.</p>}
     <p className="small-hint">*Reservas podem absorver parte da compra simulada sem aumentar o total planejado. Isso não significa que o dinheiro já esteja disponível em conta. O simulador considera apenas as parcelas que vencem dentro dos 12 meses mostrados; ele não salva a compra.</p>
    </>}
   </section>
