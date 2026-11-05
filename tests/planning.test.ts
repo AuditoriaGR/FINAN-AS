@@ -1,6 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {blankData,type Tables,type Budget,type Tx,type Recurring,type Card} from '../src/types';
 import {effectiveCategoryBudgets,expectedMonthlyRows,protectedProjection,simulatePurchase,spendingInsights} from '../src/planning';
+import {generateAlerts} from '../src/finance';
 
 const uid='u1',house='home';
 const tx=(id:string,month:string,category:string,amount_cents:number,more:Partial<Tx>={}):Tx=>({
@@ -52,6 +53,12 @@ describe('planejamento protegido',()=>{
   expect(r.budgetReserveCents).toBe(50000);
   expect(r.cardReserveCents).toBe(60000);
   expect(r.expenseCents).toBe(150000);
+ });
+ it('mantém alerta de limite de categoria mesmo no mês seguinte ao cadastro',()=>{
+  const data:Tables={...blankData,category_budgets:[budget('b','2026-11','Compras',20000)],
+   transactions:[tx('compras','2026-12','Compras',19000)]};
+  const alerts=generateAlerts(data,'all',uid,'2026-12');
+  expect(alerts.some(a=>a.title.startsWith('Compras:')&&a.kind==='warn')).toBe(true);
  });
  it('preserva separadamente piso de categoria pago fora do cartão e reserva do cartão',()=>{
   const data:Tables={...blankData,category_budgets:[budget('b','2026-11','Moradia',80000)],
