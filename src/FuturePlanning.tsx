@@ -2,7 +2,7 @@ import {useEffect,useMemo,useState} from 'react';
 import {Calculator,CheckCircle2,AlertTriangle,ShieldCheck,ShoppingBag} from 'lucide-react';
 import type {Tables} from './types';
 import {categories} from './types';
-import {cents,money,monthName,visible} from './finance';
+import {accountBalancesByPurpose,cents,money,monthName,visible} from './finance';
 import {projectedWithCarryForward,simulatePurchase,type PlanningView} from './planning';
 
 type Props={data:Tables;view:PlanningView;uid:string;month:string};
@@ -29,10 +29,16 @@ export default function FuturePlanning({data,view,uid,month}:Props){
   }catch(e){return {result:null,error:e instanceof Error?e.message:'Informe dados válidos'}}
  },[data,view,uid,month,cost,amountMode,installments,purchaseMonth,purchaseDay,category,cardId]);
  const current=projected[0];const negatives=projected.filter(r=>r.balanceCents<0);
+ const holdings=accountBalancesByPurpose(visible(data.accounts,view,uid),
+  visible(data.transactions,view,uid),data.card_payments,data.account_balance_adjustments);
  const plannedCost=projected.reduce((s,r)=>s+r.expenseCents,0);
  return <div className="future-planning">
   <div className="section-intro">
-   <div><p>Projeção conservadora: orçamentos de categoria valem como <strong>reserva mínima</strong> para os meses seguintes, até serem alterados. O limite dos cartões também é considerado na visão consolidada.</p></div>
+   <div><p>Projeção conservadora: orçamentos de categoria valem como <strong>reserva mínima</strong> para os meses seguintes. <strong>Aplicações CDB ficam separadas e não são usadas para pagar despesas ou simular compras.</strong></p></div>
+  </div>
+  <div className="investment-overview">
+   <div className="investment-summary-tile"><div><small>Saldo em contas para pagamentos</small><strong>{money(holdings.availableCents)}</strong><span>Dinheiro utilizado como base na projeção</span></div></div>
+   <div className="investment-summary-tile"><div><small>Investimentos · CDB (fora da projeção)</small><strong>{money(holdings.investmentCents)}</strong><span>Patrimônio aplicado, disponível apenas após resgate registrado</span></div></div>
   </div>
   <div className="planning-stats">
    <div><small>Despesa total protegida · {monthName(month)}</small><strong>{money(current.expenseCents)}</strong><span>Inclui gastos, parcelas, fixos e reservas</span></div>
@@ -54,7 +60,7 @@ export default function FuturePlanning({data,view,uid,month}:Props){
     <td className={`text-right strong ${r.balanceCents<0?'danger-text':'positive'}`}>{money(r.balanceCents)}</td>
     <td className={`text-right ${r.cumulativeCents<0?'danger-text':''}`}>{money(r.cumulativeCents)}</td>
    </tr>)}</tbody></table></div>
-   <p className="small-hint">*O saldo acumulado transporta a sobra ou o déficit dos meses anteriores, começando pelo mês atual. Exemplo: sobra de R$ 1.000 em dezembro + R$ 80 em janeiro = R$ 1.080 acumulados em janeiro. Parte do saldo já registrado nas contas do casal; valores já incluídos no saldo inicial não são repetidos. A previsão depende de receitas, despesas e limites cadastrados; o teto dos cartões é reserva de planejamento, não cobrança bancária.</p>
+   <p className="small-hint">*O saldo acumulado transporta a sobra ou o déficit dos meses anteriores, começando pelo mês atual. Exemplo: sobra de R$ 1.000 em dezembro + R$ 80 em janeiro = R$ 1.080 acumulados em janeiro. Parte apenas dos saldos de contas para pagamentos. CDBs e outros investimentos não entram automaticamente; valores já incluídos no saldo inicial não são repetidos. A previsão depende de receitas, despesas e limites cadastrados; o teto dos cartões é reserva de planejamento, não cobrança bancária.</p>
   </section>
   <section className="panel">
    <div className="panel-head"><div><h2>Limites das categorias considerados no futuro</h2><p>Exemplo: orçamento de R$ 800, gastos já previstos de R$ 300, reserva adicional de R$ 500.</p></div></div>
