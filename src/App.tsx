@@ -4,7 +4,7 @@ import {LayoutDashboard,ArrowLeftRight,Wallet,CreditCard,PieChart as PieIcon,Tar
 import type {User} from '@supabase/supabase-js';
 import {db,configured} from './supabase';
 import {demoData,demoHousehold,demoUser} from './demo';
-import {blankData,categories,type Tables,type Tx,type Scope,type Account,type Household} from './types';
+import {blankData,categories,type Tables,type Tx,type Scope,type Household} from './types';
 import {money,cents,monthShift,dueDate,today,monthName,visible,totals,budgetStatus,goalProgress,accountBalance,cardInvoice,forecast,generateAlerts,installmentPlan,invoiceMonthForPurchase,isoMonth} from './finance';
 
 type Page='dashboard'|'transactions'|'budgets'|'goals'|'cards'|'accounts'|'planning'|'comparison'|'alerts'|'settings';
@@ -31,16 +31,17 @@ export default function App(){
  const uid=user?.id||demoUser;
  const saveNotice=(v:string)=>{setNotice(v);window.setTimeout(()=>setNotice(''),6500)};
  const refresh=useCallback(async()=>{
-  if(!db)return;
-  const who=await db.auth.getUser();if(!who.data.user){setUser(null);setAuthLoaded(true);return}
+  const client=db;
+  if(!client)return;
+  const who=await client.auth.getUser();if(!who.data.user){setUser(null);setAuthLoaded(true);return}
   const me=who.data.user;setUser(me);
   const tables:(keyof Tables)[]=['accounts','credit_cards','transactions','category_budgets','financial_goals','goal_contributions','recurring_rules','card_payments','household_members'];
-  const results=await Promise.all(tables.map(async table=>{const r=await db.from(table).select('*');return {table,rows:r.data||[],error:r.error}}));
+  const results=await Promise.all(tables.map(async table=>{const r=await client.from(table).select('*');return {table,rows:r.data||[],error:r.error}}));
   const next={...blankData} as Tables;
   for(const item of results){if(item.error)saveNotice(`Falha ao carregar ${item.table}: ${item.error.message}`);(next as unknown as Record<string,unknown[]>)[item.table]=item.rows}
   setData(next);
   const hm=next.household_members.find(m=>m.user_id===me.id);
-  if(hm){const r=await db.from('households').select('*').eq('id',hm.household_id).single();setHousehold(r.data as Household|null)}else setHousehold(null);
+  if(hm){const r=await client.from('households').select('*').eq('id',hm.household_id).single();setHousehold(r.data as Household|null)}else setHousehold(null);
   setAuthLoaded(true)
  },[]);
  useEffect(()=>{if(!db)return;void refresh();const {data:sub}=db.auth.onAuthStateChange((_event,session)=>{if(!session?.user){setUser(null);setData({...blankData});setHousehold(null);setAuthLoaded(true)}else setTimeout(()=>void refresh(),0)});return()=>sub.subscription.unsubscribe()},[refresh]);
