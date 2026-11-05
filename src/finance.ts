@@ -22,7 +22,7 @@ export function spentCategory(txs:Tx[],month:string,category:string){return txs.
 export function budgetStatus(b:Budget,txs:Tx[]){const spent=spentCategory(txs.filter(t=>b.scope==='shared'?t.scope==='shared':t.owner_id===b.owner_id),b.month,b.category);return {spent,remaining:b.amount_cents-spent,percent:b.amount_cents?Math.round(spent/b.amount_cents*100):0}}
 export function goalProgress(g:Goal,c:Contribution[]){const saved=c.filter(x=>x.goal_id===g.id).reduce((a,x)=>a+x.amount_cents,0);return {saved,percent:g.target_cents?Math.round(saved/g.target_cents*100):0,remaining:Math.max(0,g.target_cents-saved)}}
 export function accountBalance(a:Account,txs:Tx[],payments:CardPayment[],adjustments:BalanceAdjustment[]=[]){
- const paid=txs.filter(x=>x.account_id===a.id&&!!x.paid_at).reduce((sum,x)=>sum+(x.type==='income'?x.amount_cents:-x.amount_cents),0);
+ const paid=txs.filter(x=>x.account_id===a.id&&!!x.paid_at&&!x.in_opening_balance).reduce((sum,x)=>sum+(x.type==='income'?x.amount_cents:-x.amount_cents),0);
  const cards=payments.filter(p=>p.account_id===a.id).reduce((sum,p)=>sum+p.amount_cents,0);
  const correction=adjustments.filter(j=>j.account_id===a.id).reduce((sum,j)=>sum+j.delta_cents,0);
  return a.opening_balance_cents+paid-cards+correction;
@@ -126,8 +126,11 @@ export function forecast(data:Tables,view:'all'|'mine'|'shared',uid:string,start
  * fazendo parte do gasto do mês. Assinaturas ainda não lançadas entram na previsão.
  * Cartões particulares da outra pessoa permanecem invisíveis. */
 export function activeCardLimit(data:Tables,uid:string,month:string){
+ const householdId=data.household_members.find(m=>m.user_id===uid)?.household_id;
+ // Shared household budget must be identical for both partners.
  return data.card_spending_limits
-   .filter(l=>l.owner_id===uid&&l.effective_month<=month)
+   .filter(l=>l.effective_month<=month&&
+      (l.household_id?l.household_id===householdId:l.owner_id===uid))
    .sort((a,b)=>b.effective_month.localeCompare(a.effective_month))[0]??null;
 }
 export function cardSpendingSummary(data:Tables,uid:string,month:string){
