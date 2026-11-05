@@ -22,7 +22,7 @@ const card:Card={id:'card',owner_id:uid,household_id:null,scope:'private',name:'
  credit_limit_cents:500000,closing_day:20,due_day:5};
 
 describe('saldo inicial e finanças compartilhadas',()=>{
- it('ambos veem o mesmo saldo inicial e não repetem salários e apartamento de novembro',()=>{
+ it('ambos veem o mesmo caixa excluindo CDB e lançamentos já quitados',()=>{
   const shared=(more:Partial<Tx>):Partial<Tx>=>({scope:'shared',household_id:house,...more});
   const novRui=tx('salary-rui','2026-11','Salário',430000,shared({
    type:'income',recurring_rule_id:'salary-rui-rule',in_opening_balance:true,paid_at:null}));
@@ -52,10 +52,10 @@ describe('saldo inicial e finanças compartilhadas',()=>{
   expect(rui[0].incomeCents).toBe(100000);
   expect(rui[0].knownExpenseCents).toBe(50000);
   expect(rui[0].balanceCents).toBe(50000);
-  expect(rui[0].cumulativeCents).toBe(1100000);
+  expect(rui[0].cumulativeCents).toBe(450000);
   expect(rui[1].incomeCents).toBe(550000);
   expect(rui[1].knownExpenseCents).toBe(117000);
-  expect(rui[1].cumulativeCents).toBe(1533000);
+  expect(rui[1].cumulativeCents).toBe(883000);
  });
  it('pagamento já debitado do banco não volta como despesa futura',()=>{
   const data:Tables={...blankData,accounts:[
