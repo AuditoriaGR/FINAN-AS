@@ -113,7 +113,7 @@ export type PurchaseImpact={
  totalPurchaseCents:number;impactCents:number;absorbedCents:number;
  monthsWithDeficit:string[];monthsOverCardCap:string[];
  categoryOverages:{month:string;category:string;excessCents:number}[];
- verdict:'fits'|'tight'|'insufficient';firstDueMonth:string;
+ verdict:'fits'|'tight'|'insufficient'|'partial';firstDueMonth:string;extendsBeyondHorizon:boolean;
 };
 
 /** Um cenário é calculado inteiramente em memória, SEM gravar lançamentos.
@@ -130,14 +130,17 @@ export function simulatePurchase(data:Tables,view:PlanningView,uid:string,start:
  if(input.cardId&&!card)throw Error('Cartão não disponível nesta visão');
  const totalPurchaseCents=input.amountMode==='total'?input.amountCents:input.amountCents*n;
  if(!Number.isSafeInteger(totalPurchaseCents)||totalPurchaseCents<=0||totalPurchaseCents<n)throw Error('Valor incompatível com as parcelas');
+ const last=monthShift(start,months-1);
+ if(input.purchaseMonth<start||input.purchaseMonth>last)
+  throw Error('A compra precisa ocorrer dentro dos 12 meses da projeção.');
  const purchaseDate=dueDate(input.purchaseMonth,input.purchaseDay);
  const firstDueMonth=card?invoiceMonthForPurchase(purchaseDate,card.closing_day,card.due_day):input.purchaseMonth;
  const day=card?card.due_day:input.purchaseDay;
  const basePart=Math.floor(totalPurchaseCents/n),extra=totalPurchaseCents%n;
+ const extendsBeyondHorizon=n>months+36||monthShift(firstDueMonth,n-1)>last;
  const created:Tx[]=[];
  // Simula somente parcelas cujo vencimento pode cair dentro do horizonte;
  // não cria milhares de registros mesmo para financiamentos muito longos.
- const last=monthShift(start,months-1);
  for(let i=0;i<Math.min(n,months+36);i++){
   const dueMonth=monthShift(firstDueMonth,i);
   if(dueMonth>last)break;
@@ -170,10 +173,10 @@ export function simulatePurchase(data:Tables,view:PlanningView,uid:string,start:
  }
  const missingIncome=withPurchase.some(r=>!r.hasIncome);
  const verdict:PurchaseImpact['verdict']=missingIncome?'insufficient'
-  :monthsWithDeficit.length||monthsOverCardCap.length||categoryOverages.length?'tight':'fits';
+  :monthsWithDeficit.length||monthsOverCardCap.length||categoryOverages.length?'tight':extendsBeyondHorizon?'partial':'fits';
  return {baseline,withPurchase,totalPurchaseCents,impactCents,
   absorbedCents:Math.max(0,created.reduce((s,t)=>s+t.amount_cents,0)-impactCents),
-  monthsWithDeficit,monthsOverCardCap,categoryOverages,verdict,firstDueMonth};
+  monthsWithDeficit,monthsOverCardCap,categoryOverages,verdict,firstDueMonth,extendsBeyondHorizon};
 }
 
 const canReview=new Set(['Assinaturas','Lazer','Compras','Alimentação','Transporte']);
