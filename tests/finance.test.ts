@@ -1,7 +1,60 @@
 import {describe,it,expect} from 'vitest';
-import {accountBalance,budgetStatus,cardInvoice,cents,dueDate,forecast,goalProgress,installmentPlan,invoiceMonthForPurchase,monthShift,totals,installmentSummary,recurringDueDateForCharge} from '../src/finance';
+import {accountBalance,budgetStatus,cardInvoice,cents,dueDate,forecast,goalProgress,installmentPlan,invoiceMonthForPurchase,monthShift,totals,installmentSummary,recurringDueDateForCharge,cardSpendingSummary,activeCardLimit,generateAlerts} from '../src/finance';
 import {blankData,type Tx} from '../src/types';
 const makeTx=(fields:Partial<Tx>):Tx=>({id:'test',owner_id:'u1',household_id:null,scope:'private',description:'Test',type:'expense',category:'Alimentação',amount_cents:10000,transaction_date:'2026-11-01',due_date:'2026-11-10',paid_at:null,account_id:null,card_id:null,installment_group_id:null,installment_number:null,installment_total:null,recurring_rule_id:null,...fields});
+
+describe('limite geral de cartões',()=>{
+ const cardA={id:'card-a',owner_id:'u1',household_id:null,scope:'private' as const,name:'Cartão A',credit_limit_cents:200000,closing_day:20,due_day:5};
+ const cardB={id:'card-b',owner_id:'u1',household_id:'home',scope:'shared' as const,name:'Cartão B',credit_limit_cents:300000,closing_day:15,due_day:20};
+ const otherCard={id:'card-other',owner_id:'u2',household_id:null,scope:'private' as const,name:'Cartão confidencial',credit_limit_cents:400000,closing_day:20,due_day:5};
+ const registered=makeTx({id:'tx1',card_id:'card-a',amount_cents:50000,paid_at:null,transaction_date:'2026-11-08',due_date:'2026-12-05'});
+ const alreadyFixed=makeTx({id:'tx-fixed',card_id:'card-a',recurring_rule_id:'fixed-a',amount_cents:8000,transaction_date:'2026-11-10',due_date:'2026-12-05'});
+ const secondCard=makeTx({id:'tx2',card_id:'card-b',scope:'shared',household_id:'home',amount_cents:40000,transaction_date:'2026-12-04',due_date:'2026-12-20'});
+ const fixedA={id:'fixed-a',owner_id:'u1',household_id:null,scope:'private' as const,type:'expense' as const,description:'Assinatura',category:'Assinaturas',amount_cents:8000,day_of_month:10,account_id:null,card_id:'card-a',start_month:'2026-11',end_month:null};
+ const fixedB={id:'fixed-b',owner_id:'u1',household_id:'home',scope:'shared' as const,type:'expense' as const,description:'Serviço',category:'Assinaturas',amount_cents:12000,day_of_month:10,account_id:null,card_id:'card-b',start_month:'2026-12',end_month:null};
+ const limit={id:'limit1',owner_id:'u1',effective_month:'2026-11',amount_cents:150000};
+ const data={...blankData,credit_cards:[cardA,cardB,otherCard],transactions:[
+  registered,alreadyFixed,secondCard,
+  makeTx({id:'private-partner-tx',owner_id:'u2',card_id:'card-other',amount_cents:300000,due_date:'2026-12-05'}),
+  makeTx({id:'partner-shared-tx',owner_id:'u2',scope:'shared',household_id:'home',card_id:'card-other',amount_cents:200000,due_date:'2026-12-05'})
+ ],recurring_rules:[fixedA,fixedB],card_spending_limits:[limit],
+ card_payments:[{id:'paid',owner_id:'u1',card_id:'card-a',account_id:'bank',statement_month:'2026-12',amount_cents:58000,paid_at:'2026-12-05'}]};
+ it('soma todas as faturas visíveis mais somente gastos fixos ainda não lançados',()=>{
+  const x=cardSpendingSummary(data,'u1','2026-12');
+  expect(x.chargedCents).toBe(98000);
+  expect(x.fixedChargedCents).toBe(8000);
+  expect(x.fixedPendingCents).toBe(12000);
+  expect(x.committedCents).toBe(110000);
+  expect(x.remainingCents).toBe(40000);
+  expect(x.cards).toHaveLength(2);
+  expect(x.percent).toBe(73);
+ });
+ it('fatura paga permanece contabilizada no limite, sem repetir pagamento',()=>{
+  const x=cardSpendingSummary(data,'u1','2026-12');
+  expect(x.chargedCents).toBe(98000);
+  expect(x.cards.find(c=>c.card_id==='card-a')?.chargedCents).toBe(58000);
+ });
+ it('não inclui cartão privado do outro integrante, mesmo com despesa compartilhada',()=>{
+  const x=cardSpendingSummary(data,'u1','2026-12');
+  expect(x.cards.map(c=>c.card_id)).not.toContain('card-other');
+  expect(x.committedCents).toBe(110000);
+ });
+ it('limite configurado segue nos meses futuros até nova revisão',()=>{
+  const revised={...data,card_spending_limits:[limit,{id:'later',owner_id:'u1',effective_month:'2027-01',amount_cents:200000},
+   {id:'other-limit',owner_id:'u2',effective_month:'2026-01',amount_cents:900000}]};
+  expect(activeCardLimit(revised,'u1','2026-10')).toBeNull();
+  expect(activeCardLimit(revised,'u1','2026-12')?.amount_cents).toBe(150000);
+  expect(activeCardLimit(revised,'u1','2027-02')?.amount_cents).toBe(200000);
+  expect(activeCardLimit(revised,'u2','2026-12')?.amount_cents).toBe(900000);
+ });
+ it('dispara aviso acima de 80% e alerta vermelho a partir de 100%',()=>{
+  const near={...data,card_spending_limits:[{...limit,amount_cents:130000}]};
+  expect(generateAlerts(near,'all','u1','2026-12').some(a=>a.title.startsWith('Cartões:')&&a.kind==='warn')).toBe(true);
+  const over={...data,card_spending_limits:[{...limit,amount_cents:100000}]};
+  expect(generateAlerts(over,'all','u1','2026-12').some(a=>a.title.startsWith('Cartões:')&&a.kind==='danger')).toBe(true);
+ });
+});
+
 describe('regras financeiras',()=>{
  it('aceita 120, 240 e 360 parcelas sem limite de 72',()=>{
   expect(installmentPlan(120000,120,'2026-11',10)).toHaveLength(120);
