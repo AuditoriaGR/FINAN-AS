@@ -169,6 +169,18 @@ describe('tendências e oportunidades',()=>{
   expect(i.opportunities[0].illustrativeSavingsCents).toBe(1800);
   expect(i.opportunities[0].growthPercent).toBeNull();
  });
+ it('aponta assinaturas para revisão sem inventar tendência histórica',()=>{
+  const data:Tables={...blankData,recurring_rules:[
+   rule('stream','expense','Assinaturas',4500),
+   rule('luz','expense','Energia elétrica',16000)
+  ]};
+  const result=spendingInsights(data,'all',uid,'2026-11');
+  expect(result.historicalMonths).toBe(0);
+  expect(result.opportunities).toHaveLength(0);
+  expect(result.recurringReviews).toHaveLength(1);
+  expect(result.recurringReviews[0].description).toBe('stream');
+  expect(result.recurringReviews[0].illustrativeSavingsCents).toBe(450);
+ });
  it('não trata contas pendentes fora do cartão como gasto realizado',()=>{
   const data:Tables={...blankData,transactions:[
     tx('not-paid','2026-10','Lazer',50000,{paid_at:null}),
