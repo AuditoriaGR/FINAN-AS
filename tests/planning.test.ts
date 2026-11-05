@@ -21,6 +21,54 @@ const rule=(id:string,type:'income'|'expense',category:string,amount_cents:numbe
 const card:Card={id:'card',owner_id:uid,household_id:null,scope:'private',name:'Meu cartão',
  credit_limit_cents:500000,closing_day:20,due_day:5};
 
+describe('saldo inicial e finanças compartilhadas',()=>{
+ it('ambos veem o mesmo saldo inicial e não repetem salários e apartamento de novembro',()=>{
+  const shared=(more:Partial<Tx>):Partial<Tx>=>({scope:'shared',household_id:house,...more});
+  const novRui=tx('salary-rui','2026-11','Salário',430000,shared({
+   type:'income',recurring_rule_id:'salary-rui-rule',in_opening_balance:true,paid_at:null}));
+  const novTaina=tx('salary-taina','2026-11','Salário',120000,shared({
+   type:'income',recurring_rule_id:'salary-taina-rule',in_opening_balance:true,paid_at:null}));
+  const novApartment=tx('apartment','2026-11','Moradia',117000,shared({
+   recurring_rule_id:'apartment-rule',in_opening_balance:true,paid_at:null}));
+  const salaryRui=rule('salary-rui-rule','income','Salário',430000,{scope:'shared',household_id:house});
+  const salaryTaina=rule('salary-taina-rule','income','Salário',120000,{scope:'shared',household_id:house});
+  const apartment=rule('apartment-rule','expense','Moradia',117000,{scope:'shared',household_id:house});
+  const data:Tables={...blankData,
+   accounts:[
+    {id:'a',owner_id:uid,household_id:house,scope:'shared',name:'Conta A',kind:'Corrente',opening_balance_cents:400000},
+    {id:'b',owner_id:uid,household_id:house,scope:'shared',name:'Conta B',kind:'CDB',opening_balance_cents:650000}
+   ],household_members:[
+    {household_id:house,user_id:uid,role:'owner',display_name:'Rui'},
+    {household_id:house,user_id:'u2',role:'member',display_name:'Taina'}
+   ],recurring_rules:[salaryRui,salaryTaina,apartment],
+   transactions:[novRui,novTaina,novApartment,
+    tx('extra-income','2026-11','Outros',100000,shared({type:'income',paid_at:null})),
+    tx('upcoming-expense','2026-11','Compras',50000,shared({paid_at:null}))
+   ],
+   card_spending_limits:[{id:'cap',owner_id:uid,household_id:house,effective_month:'2026-11',amount_cents:10000}]
+  };
+  const rui=projectedWithCarryForward(data,'all',uid,'2026-11',2,'2026-11');
+  const taina=projectedWithCarryForward(data,'all','u2','2026-11',2,'2026-11');
+  expect(rui).toEqual(taina);
+  expect(rui[0].incomeCents).toBe(100000);
+  expect(rui[0].knownExpenseCents).toBe(50000);
+  expect(rui[0].balanceCents).toBe(50000);
+  expect(rui[0].cumulativeCents).toBe(1100000);
+  expect(rui[1].incomeCents).toBe(550000);
+  expect(rui[1].knownExpenseCents).toBe(117000);
+  expect(rui[1].cumulativeCents).toBe(1533000);
+ });
+ it('movimentos já no saldo inicial não são acrescentados de novo quando marcados pagos',()=>{
+  const data:Tables={...blankData,accounts:[
+   {id:'a',owner_id:uid,household_id:house,scope:'shared',name:'Conta',kind:'Corrente',opening_balance_cents:100000}
+  ],transactions:[
+   tx('salary','2026-11','Salário',50000,{type:'income',scope:'shared',household_id:house,account_id:'a',paid_at:'2026-11-05',in_opening_balance:true}),
+   tx('rent','2026-11','Moradia',20000,{scope:'shared',household_id:house,account_id:'a',paid_at:'2026-11-05',in_opening_balance:true})
+  ]};
+  expect(projectedWithCarryForward(data,'all',uid,'2026-11',1,'2026-11')[0].cumulativeCents).toBe(100000);
+ });
+});
+
 describe('planejamento protegido',()=>{
  it('carrega orçamento por categoria adiante e permite atualizar valor a partir de janeiro',()=>{
   const data:Tables={...blankData,category_budgets:[
