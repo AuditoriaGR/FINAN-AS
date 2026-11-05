@@ -1,5 +1,5 @@
 import {describe,it,expect} from 'vitest';
-import {accountBalance,cardInvoice,cardSpendingSummary,forecast} from '../src/finance';
+import {accountBalance,cardInvoice,cardSpendingSummary,forecast,adjustedMonthlyTotals} from '../src/finance';
 import {expectedMonthlyRows,protectedProjection,simulatePurchase,spendingInsights} from '../src/planning';
 import {blankData,type Account,type Card,type CardStatementTotal,type Tx,type Recurring} from '../src/types';
 
@@ -97,6 +97,17 @@ describe('fatura mensal informada manualmente',()=>{
   expect(protectedProjection(data,'all','u1','2026-12',1)[0].knownExpenseCents).toBe(90000);
   expect(forecast(data,'all','u1','2026-12',1)[0].expense).toBe(90000);
   expect(spendingInsights(data,'all','u1','2027-01').months[5].expenseCents).toBe(90000);
+ });
+ it('gráficos e comparações incluem o valor oficial, inclusive os gastos sem detalhe',()=>{
+  const data={...blankData,credit_cards:[card],transactions:[tx('old1',40000)],card_statement_totals:[statement(90000)]};
+  const totals=adjustedMonthlyTotals(data,'all','u1','2026-12');
+  expect(totals.income).toBe(0);
+  expect(totals.expense).toBe(90000);
+  expect(totals.statementAdjustment).toBe(50000);
+  const details=[...data.transactions,tx('old2',20000)];
+  const next=adjustedMonthlyTotals({...data,transactions:details},'all','u1','2026-12');
+  expect(next.expense).toBe(90000);
+  expect(next.statementAdjustment).toBe(30000);
  });
  it('a simulação de uma compra nova aumenta o custo, não utiliza a fatura real antiga',()=>{
   const data={...blankData,credit_cards:[card],transactions:[tx('old1',40000)],
