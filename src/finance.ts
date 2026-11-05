@@ -88,4 +88,54 @@ export function forecast(data:Tables,view:'all'|'mine'|'shared',uid:string,start
   return {month,short:monthName(month),income,expense,balance:income-expense};
  });
 }
-export function generateAlerts(data:Tables,view:'all'|'mine'|'shared',uid:string,month:string){const txs=visible(data.transactions,view,uid),res:{kind:'danger'|'warn'|'info',title:string,detail:string}[]=[];budgetForView(data.category_budgets,view,uid,month).forEach(b=>{const st=budgetStatus(b,txs);if(st.percent>=80)res.push({kind:st.percent>=100?'danger':'warn',title:`${b.category}: ${st.percent}% do orçamento (${st.percent>=100?'limite excedido':st.percent>=90?'atenção 90%':'atenção 80%'})`,detail:st.remaining<0?`Excedido em ${money(-st.remaining)}`:`Restante: ${money(st.remaining)}`})}); const near=new Date();near.setDate(near.getDate()+7);const future=`${near.getFullYear()}-${String(near.getMonth()+1).padStart(2,'0')}-${String(near.getDate()).padStart(2,'0')}`;txs.filter(t=>t.type==='expense'&&!t.card_id&&!t.paid_at&&t.due_date<=future).forEach(t=>res.push({kind:t.due_date<today()?'danger':'warn',title:t.due_date<today()?'Despesa vencida':'Próximo vencimento',detail:`${t.description} · ${money(t.amount_cents)} · ${t.due_date.split('-').reverse().join('/')}`}));visible(data.credit_cards,view,uid).forEach(card=>{const debt=cardInvoice(card.id,month,data.transactions,data.card_payments).outstanding;const due=dueDate(month,card.due_day);if(debt>0&&due<=future)res.push({kind:due<today()?'danger':'warn',title:due<today()?'Fatura vencida':'Fatura próxima do vencimento',detail:`${card.name} · ${money(debt)} · ${due.split('-').reverse().join('/')}`})});const projected=forecast(data,view,uid,month,3);if(projected.some(m=>m.balance<0))res.push({kind:'warn',title:'Mês com fluxo negativo',detail:'A previsão indica despesas superiores às receitas em pelo menos um dos próximos 3 meses.'});visible(data.financial_goals,view,uid).forEach(g=>{const p=goalProgress(g,data.goal_contributions);if(g.deadline&&g.deadline<today()&&p.remaining>0)res.push({kind:'warn',title:`Meta atrasada: ${g.name}`,detail:`Faltam ${money(p.remaining)} para concluir.`})});return res}
+/** Orçamento consolidado de cartões acessíveis ao usuário: uma fatura paga continua
+ * fazendo parte do gasto do mês. Assinaturas ainda não lançadas entram na previsão.
+ * Cartões particulares da outra pessoa permanecem invisíveis. */
+export function activeCardLimit(data:Tables,uid:string,month:string){
+ return data.card_spending_limits
+   .filter(l=>l.owner_id===uid&&l.effective_month<=month)
+   .sort((a,b)=>b.effective_month.localeCompare(a.effective_month))[0]??null;
+}
+export function cardSpendingSummary(data:Tables,uid:string,month:string){
+ const cards=visible(data.credit_cards,'all',uid);
+ const ids=new Set(cards.map(c=>c.id));
+ const txs=visible(data.transactions,'all',uid);
+ const rules=visible(data.recurring_rules,'all',uid);
+ const visibleCardTransactions=txs.filter(t=>t.type==='expense'&&t.card_id&&ids.has(t.card_id));
+ const cardRows=cards.map(card=>{
+  const entries=visibleCardTransactions.filter(t=>t.card_id===card.id&&isoMonth(t.due_date)===month);
+  const chargedCents=entries.reduce((sum,t)=>sum+t.amount_cents,0);
+  const fixedChargedCents=entries.filter(t=>t.recurring_rule_id!==null).reduce((sum,t)=>sum+t.amount_cents,0);
+  let fixedPendingCents=0;
+  for(const r of rules){
+   if(r.card_id!==card.id||r.type!=='expense'||r.is_active===false)continue;
+   for(const chargeMonth of [month,monthShift(month,-1),monthShift(month,-2)]){
+    if(r.start_month>chargeMonth||(r.end_month&&r.end_month<chargeMonth))continue;
+    const expectedDue=recurringDueDateForCharge(r,chargeMonth,cards,txs);
+    if(isoMonth(expectedDue)!==month)continue;
+    const exists=txs.some(t=>t.recurring_rule_id===r.id&&isoMonth(t.transaction_date)===chargeMonth);
+    if(!exists)fixedPendingCents+=r.amount_cents;
+   }
+  }
+  return {card_id:card.id,name:card.name,chargedCents,fixedChargedCents,fixedPendingCents,committedCents:chargedCents+fixedPendingCents};
+ });
+ const chargedCents=cardRows.reduce((sum,r)=>sum+r.chargedCents,0);
+ const fixedChargedCents=cardRows.reduce((sum,r)=>sum+r.fixedChargedCents,0);
+ const fixedPendingCents=cardRows.reduce((sum,r)=>sum+r.fixedPendingCents,0);
+ const committedCents=chargedCents+fixedPendingCents;
+ const limit=activeCardLimit(data,uid,month);
+ const limitCents=limit?.amount_cents??null;
+ return {month,limit,limitCents,cards:cardRows,chargedCents,fixedChargedCents,
+   fixedPendingCents,committedCents,
+   remainingCents:limitCents===null?null:limitCents-committedCents,
+   percent:limitCents?Math.round(committedCents/limitCents*100):null};
+}
+export function generateAlerts(data:Tables,view:'all'|'mine'|'shared',uid:string,month:string){const txs=visible(data.transactions,view,uid),res:{kind:'danger'|'warn'|'info',title:string,detail:string}[]=[];budgetForView(data.category_budgets,view,uid,month).forEach(b=>{const st=budgetStatus(b,txs);if(st.percent>=80)res.push({kind:st.percent>=100?'danger':'warn',title:`${b.category}: ${st.percent}% do orçamento (${st.percent>=100?'limite excedido':st.percent>=90?'atenção 90%':'atenção 80%'})`,detail:st.remaining<0?`Excedido em ${money(-st.remaining)}`:`Restante: ${money(st.remaining)}`})}); const near=new Date();near.setDate(near.getDate()+7);const future=`${near.getFullYear()}-${String(near.getMonth()+1).padStart(2,'0')}-${String(near.getDate()).padStart(2,'0')}`;txs.filter(t=>t.type==='expense'&&!t.card_id&&!t.paid_at&&t.due_date<=future).forEach(t=>res.push({kind:t.due_date<today()?'danger':'warn',title:t.due_date<today()?'Despesa vencida':'Próximo vencimento',detail:`${t.description} · ${money(t.amount_cents)} · ${t.due_date.split('-').reverse().join('/')}`}));visible(data.credit_cards,view,uid).forEach(card=>{const debt=cardInvoice(card.id,month,data.transactions,data.card_payments).outstanding;const due=dueDate(month,card.due_day);if(debt>0&&due<=future)res.push({kind:due<today()?'danger':'warn',title:due<today()?'Fatura vencida':'Fatura próxima do vencimento',detail:`${card.name} · ${money(debt)} · ${due.split('-').reverse().join('/')}`})});const projected=forecast(data,view,uid,month,3);if(projected.some(m=>m.balance<0))res.push({kind:'warn',title:'Mês com fluxo negativo',detail:'A previsão indica despesas superiores às receitas em pelo menos um dos próximos 3 meses.'});visible(data.financial_goals,view,uid).forEach(g=>{const p=goalProgress(g,data.goal_contributions);if(g.deadline&&g.deadline<today()&&p.remaining>0)res.push({kind:'warn',title:`Meta atrasada: ${g.name}`,detail:`Faltam ${money(p.remaining)} para concluir.`})});const cap=cardSpendingSummary(data,uid,month);
+ if(cap.percent!==null&&cap.percent>=80){
+  res.push({kind:cap.percent>=100?'danger':'warn',
+   title:`Cartões: ${cap.percent}% do limite total`,
+   detail:cap.remainingCents!==null&&cap.remainingCents<0
+    ?`Teto excedido em ${money(-cap.remainingCents)}, incluindo os gastos fixos previstos.`
+    :`Total comprometido: ${money(cap.committedCents)}. Restante: ${money(cap.remainingCents??0)}.`});
+ }
+ return res}
