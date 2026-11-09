@@ -108,10 +108,20 @@ export function calculatePayroll(input:PayrollInputs,variant:VacationVariant,mon
  const sold=variant==='sell10'?Math.floor(rightDays/3):variant==='hypothetical30'?rightDays:0;
  const daysOff=variant==='hypothetical30'?0:rightDays-sold;
  const hasStart=isoValid(input.vacationStart);
- const payDate=hasStart?shiftDate(input.vacationStart,-2):null;
+ // A data-limite da CLT é dois dias antes do início; se cair no fim
+ // de semana, a previsão bancária recua para a sexta-feira.
+ const rawVacationPayDate=hasStart?shiftDate(input.vacationStart,-2):null;
+ const payWeekday=rawVacationPayDate
+  ?new Date(rawVacationPayDate+'T00:00:00Z').getUTCDay():-1;
+ const payDate=rawVacationPayDate?
+  shiftDate(rawVacationPayDate,payWeekday===0?-2:payWeekday===6?-1:0):null;
  const monthlySalaryDay=fromOrdinal(dayOrdinal(month+'-01')+32).slice(0,7)+'-05';
  const daysOffInMonth=hasStart?overlappingLeaveDays(input.vacationStart,daysOff,month):0;
- const workedDays=bound(30-daysOffInMonth,0,30);
+ const [yearNum,monthNum]=month.split('-').map(Number);
+ const calendarDays=new Date(Date.UTC(yearNum,monthNum,0)).getUTCDate();
+ // Converter férias em dias equivalentes de folha (divisor 30).
+ // Evita atribuir salário residual fictício num fevereiro inteiro de férias.
+ const workedDays=bound(Math.round(30*(calendarDays-daysOffInMonth)/calendarDays),0,30);
  const salaryGross=moneyRound(monthlyGrossCents*workedDays/30);
  const salaryTaxes=taxes2026(salaryGross,deps);
  const monthlyDeductions=moneyRound(input.monthlyDeductionsCents);
