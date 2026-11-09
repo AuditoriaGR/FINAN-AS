@@ -135,3 +135,23 @@
 .settlement-preview small{font-size:11px;color:#6a7b81}
 @media(max-width:900px){.realization-metrics{grid-template-columns:1fr 1fr}.realization-total{grid-column:1/-1}}
 @media(max-width:620px){.realization-metrics{grid-template-columns:1fr}.realization-total{grid-column:auto}.realization-tile{padding:14px}.realization-big{font-size:23px}.realization-line strong{font-size:13px}}
+
+/* Instalação PWA via Chrome, sem distribuir APK */
+.settings-grid>.pwa-install-panel{grid-column:1/-1}
+.pwa-install-panel .panel-head{align-items:center}
+.pwa-install-panel .settings-text{margin:10px 0 18px;font-size:12px;max-width:580px}
+.pwa-install-panel .primary.full{max-width:370px;display:flex;align-items:center;justify-content:center;gap:8px}
+.pwa-installed{display:flex;align-items:flex-start;gap:12px;color:#147660;background:#f0f8f5;padding:16px;border-radius:12px;border:1px solid #d4eadd}
+.pwa-installed p{font-size:12px;color:#6b8087;margin:5px 0 0;line-height:1.5}
+.pwa-howto{border-radius:12px;background:#f4f8f9;padding:15px 18px;margin:16px 0 0;color:#3b5760}
+.pwa-howto>strong{font-size:13px}
+.pwa-howto p{font-size:12px;line-height:1.65;margin:8px 0 0}
+.pwa-install-panel .small-hint{display:flex;align-items:flex-start;gap:6px;margin:17px 0 0}
+.pwa-install-panel .small-hint svg{flex-shrink:0;margin-top:2px}
+.pwa-header-install{display:flex;align-items:center;gap:6px;white-space:nowrap}
+@media(max-width:900px){.pwa-header-install{padding:7px 9px}}
+@media(max-width:620px){
+ .pwa-header-install{font-size:0!important;gap:0!important;padding:9px!important;min-width:35px}
+ .pwa-header-install svg{width:18px;height:18px}
+ .pwa-install-panel .primary.full{max-width:none}
+}

@@ -3,6 +3,21 @@
 **Aplicação em produção:** https://meu-financeiro-casal.vercel.app  
 **Supabase pessoal:** https://supabase.com/dashboard/project/bpdorktzzsebjcnyuqah
 
+
+## Instalar no Android pelo Google Chrome (sem APK manual)
+
+O Meu Financeiro é uma aplicação web instalável (PWA). **Não exige baixar APK de terceiros nem publicar o app na Play Store**.
+
+1. Abra o endereço oficial `https://meu-financeiro-casal.vercel.app` no **Google Chrome**.
+2. Toque em **Instalar app**, no cabeçalho, caso o navegador ofereça instalação direta.
+3. Se a instalação direta não estiver disponível, abra **Configurações → Instalar Meu Financeiro** para ver as instruções. No Chrome, use **⋮ → Instalar aplicativo** ou **Adicionar à tela inicial**.
+4. Confirme. O ícone **Meu Financeiro** aparecerá na tela inicial ou na lista de aplicativos. Abra-o como um aplicativo independente do navegador.
+5. Cada integrante continua acessando a mesma casa com seu login. Nenhum dado financeiro é migrado para a instalação local.
+
+O PWA usa `public/manifest.webmanifest`, ícones PNG nos tamanhos 192/512, o service worker `public/sw.js` e uma página estática de orientação offline. **Apenas a página estática de falta de conexão é armazenada no cache; nenhuma resposta de autenticação, saldo, cartão ou Supabase é gravada ali.** O aplicativo requer internet para acessar os dados reais. Para iPhone, use o Safari → Compartilhar → Adicionar à Tela de Início.
+
+As validações da instalação rodam com `npm test` no build. Atualizações do site são publicadas normalmente na Vercel e ficam disponíveis para os usuários instalados.
+
 ## Recursos
 
 - Acesso por conta, dados individuais e compartilhados com políticas RLS.

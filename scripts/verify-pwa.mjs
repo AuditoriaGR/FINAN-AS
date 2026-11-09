@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import {readFileSync,existsSync} from 'node:fs';
+import {resolve,dirname} from 'node:path';
+import {fileURLToPath} from 'node:url';
+const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
+const read=path=>readFileSync(resolve(root,path));
+const manifest=JSON.parse(read('public/manifest.webmanifest').toString('utf8'));
+assert.equal(manifest.start_url,'/');
+assert.equal(manifest.scope,'/');
+assert.equal(manifest.display,'standalone');
+assert.equal(manifest.prefer_related_applications,false);
+assert.ok(manifest.name&&manifest.short_name);
+for(const dim of [192,512]){
+ const item=manifest.icons.find(x=>x.sizes===`${dim}x${dim}`&&x.type==='image/png');
+ assert.ok(item,`Falta ícone PNG ${dim}x${dim}`);
+ const path='public/'+item.src.replace(/^\//,'');
+ assert.ok(existsSync(resolve(root,path)),`Ícone não existe: ${path}`);
+ const bytes=read(path);
+ assert.equal(bytes.subarray(0,8).toString('hex'),'89504e470d0a1a0a');
+ assert.equal(bytes.readUInt32BE(16),dim);
+ assert.equal(bytes.readUInt32BE(20),dim);
+}
+const html=read('index.html').toString('utf8');
+assert.match(html, /rel="manifest"/);
+assert.match(html, /name="theme-color"/);
+const worker=read('public/sw.js').toString('utf8');
+assert.match(worker, /offline\.html/);
+assert.match(worker, /request\.mode !== 'navigate'/);
+assert.doesNotMatch(worker,/cache\.put\(request/);
+assert.doesNotMatch(worker,/cache\.add\(\s*request/);
+console.log('PWA: manifesto, PNGs 192/512, instalação e cache privado verificados.');
