@@ -1,8 +1,9 @@
+import './payroll.css';
 import {useEffect,useMemo,useState} from 'react';
 import {Calculator,CalendarDays,CheckCircle2,Copy,Info,PiggyBank,Save,ShieldAlert,Wallet} from 'lucide-react';
 import {db} from './supabase';
 import {cents,money} from './finance';
-import {calculatePayroll2026,defaultPayrollInput,payroll2026Sources,type PayrollInput,type SaleScenario} from './payroll2026';
+import {calculatePayroll2026,payroll2026Sources,type PayrollInput,type SaleScenario} from './payroll2026';
 
 type Person='rui'|'taina';
 type MoneyField='baseSalary'|'hazardFixed'|'habitualExtras'|'salaryDiscount'|'vacationDiscount'|'thirteenthDiscount'|'firstPaid';
