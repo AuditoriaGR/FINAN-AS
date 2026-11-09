@@ -3,7 +3,7 @@ import {CheckCircle2,Download,ExternalLink,Smartphone} from 'lucide-react';
 type Props={installed:boolean;canPrompt:boolean;isIOS:boolean;onInstall:()=>void};
 
 export default function InstallAppCard({installed,canPrompt,isIOS,onInstall}:Props){
- return <section className="panel">
+ return <section className="panel pwa-install-panel">
   <div className="panel-head"><div><h2>Instalar Meu Financeiro</h2>
    <p>Use como aplicativo no celular, sem baixar APK e sem perder seus dados.</p></div>
    <span className="icon-badge blue"><Smartphone size={20}/></span>
