@@ -29,6 +29,18 @@
 
 **Migrações:** `006_account_balance_reconciliation.sql` e `007_card_statement_actual_totals.sql` já estão aplicadas no Supabase pessoal. As duas tabelas têm RLS e as operações de conciliação usam funções `SECURITY INVOKER`.
 
+## Baixas com valor real e medição de desvios
+
+- Em **Lançamentos**, selecione o mês e clique no símbolo de confirmação junto à receita ou despesa pendente. A nova baixa solicita **valor efetivamente recebido/pago**, **data** e **conta disponível**; ela não usa CDB como conta de pagamento.
+- Na primeira baixa, o valor originalmente previsto é preservado em `transactions.planned_amount_cents`. O campo `amount_cents` passa a refletir o realizado. Uma correção posterior de baixa não altera a previsão original.
+- Despesa prevista de R$ 300 e paga por R$ 270 = **R$ 30 favoráveis**; receita prevista de R$ 1.000 e recebida por R$ 950 = **R$ 50 desfavoráveis**.
+- O painel **Previsto × realizado**, na Visão geral e em Lançamentos, consolida receitas, despesas e efeito líquido das baixas do mês selecionado. O CSV inclui previsto, realizado e desvio.
+- O saldo da conta é atualizado com o realizado e a projeção usa os novos valores, sem repassar desvios às parcelas ou recorrências de meses futuros.
+- Compras no cartão são conciliadas pela **fatura real** na página Cartões. Movimentos marcados como já incluídos no saldo inicial não podem ser baixados outra vez.
+- Se o valor realizado for corrigido após a baixa, utilize o ícone de edição em **Lançamentos**; para uma cobrança fixa variável ainda pendente, use **Fixas e parcelas → Informar valor do mês**.
+- Lançamentos pendentes não são tratados como realizados na análise, e valores anteriores a essa melhoria não recebem desvios históricos inventados.
+- A operação é atômica e respeita a visibilidade do casal por RLS: `010_settlement_actual_vs_planned.sql` cria a função `public.settle_transaction` com `SECURITY INVOKER`.
+
 ## Saldos iniciais e responsabilidade do casal
 
 - Os valores iniciais das contas são uma **fotografia bancária já com os salários e o apartamento pagos em novembro de 2026**.
