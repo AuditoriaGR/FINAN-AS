@@ -1,10 +1,10 @@
 import {useEffect,useMemo,useState} from 'react';
 import {Calculator,Check,Copy,Info,Save,ShieldCheck,Users,CalendarDays,AlertTriangle} from 'lucide-react';
-import {cents,money} from './finance';
+import {cents,money,monthName} from './finance';
 import {db} from './supabase';
 import {
- blankPayroll,calculatePayroll,type PayrollInputs,
- type PayrollResult,type PayrollPayment,type VacationVariant
+ calculatePayroll,type PayrollInputs,
+ type PayrollResult,type VacationVariant
 } from './payroll';
 
 type PersonKey='rui'|'taina';
@@ -380,8 +380,8 @@ export default function PayrollCalculator({householdId,uid,connected}:Props){
     <p>Inclui apenas perfis com valores informados e cenários legais. Não altera o orçamento salvo.</p></div>
     <Users size={20}/></div>
    <div className="payroll-family-grid">
-    <div><small>Novembro/2026</small><strong>{money(family.monthTotal)}</strong></div>
-    <div><small>Dezembro/2026</small><strong>{money(family.nextTotal)}</strong></div>
+    <div><small>{monthName(month)}</small><strong>{money(family.monthTotal)}</strong></div>
+    <div><small>{family.output[0]?.result.salary.payDate.slice(0,7)?monthName(family.output[0].result.salary.payDate.slice(0,7)):'Mês seguinte'}</small><strong>{money(family.nextTotal)}</strong></div>
     <div><small>Total de entradas estimadas</small><strong>{money(family.total)}</strong></div>
    </div>
    <p className="small-hint">Perfis considerados: {family.output.map(x=>x.name).join(' + ')}. Despesas não foram deduzidas deste total; consulte Planejamento para comparar recebimentos com as contas.</p>
