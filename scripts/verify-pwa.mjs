@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import {readFileSync,existsSync} from 'node:fs';
-import {resolve} from 'node:path';
-const root=resolve(import.meta.dirname,'..');
+import {resolve,dirname} from 'node:path';
+import {fileURLToPath} from 'node:url';
+const root=resolve(dirname(fileURLToPath(import.meta.url)),'..');
 const read=path=>readFileSync(resolve(root,path));
 const manifest=JSON.parse(read('public/manifest.webmanifest').toString('utf8'));
 assert.equal(manifest.start_url,'/');
