@@ -23,6 +23,12 @@ describe('calculadora CLT Brasil 2026',()=>{
   expect(overlappingLeaveDays('2026-11-25',20,'2026-11')).toBe(6);
   expect(overlappingLeaveDays('2026-12-15',20,'2026-11')).toBe(0);
  });
+ it('fevereiro integralmente coberto por férias não cria dias de trabalho fictícios',()=>{
+  const p=calculatePayroll({...normal,vacationStart:'2026-02-01'},'normal','2026-02');
+  expect(p.salary.vacationDaysInMonth).toBe(28);
+  expect(p.salary.workedDays).toBe(0);
+  expect(p.salary.grossCents).toBe(0);
+ });
  it('13º é calculado integral e desconta tributos apenas da segunda parcela',()=>{
   const x=calculatePayroll(normal,'normal');
   expect(x.thirteen.annualGrossCents).toBe(650000);
@@ -38,7 +44,7 @@ describe('calculadora CLT Brasil 2026',()=>{
   expect(x.salary.workedDays).toBe(9);
   expect(x.salary.grossCents).toBe(195000);
   expect(x.salary.payDate).toBe('2026-12-05');
-  expect(x.vacation.payDate).toBe('2026-11-08');
+  expect(x.vacation.payDate).toBe('2026-11-06');
  });
  it('venda legal de 10 dias reduz gozo, calcula abono separado e aumenta dias trabalhados',()=>{
   const normalResult=calculatePayroll(normal,'normal');
