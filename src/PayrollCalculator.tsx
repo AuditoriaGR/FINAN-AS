@@ -200,10 +200,11 @@ export default function PayrollCalculator({householdId,uid,connected}:Props){
  };
  useEffect(()=>{
   if(!connected||!db||!householdId)return;
+  const client=db;
   let cancelled=false;
   const load=async()=>{
    setLoading(true);
-   const r=await db.from('payroll_profiles').select('*').eq('household_id',householdId);
+   const r=await client.from('payroll_profiles').select('*').eq('household_id',householdId);
    if(cancelled)return;
    if(r.error){setStatus('Não foi possível carregar os perfis: '+r.error.message)}
    else {
