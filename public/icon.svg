@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Meu Financeiro">
+<rect width="512" height="512" fill="#101b2a"/>
+<rect x="88" y="144" width="336" height="246" rx="60" fill="#21beaa"/>
+<rect x="118" y="187" width="276" height="175" rx="36" fill="#101b2a"/>
+<rect x="123" y="144" width="245" height="34" rx="12" fill="#fff"/>
+<rect x="134" y="211" width="244" height="25" rx="8" fill="#fff"/>
+<rect x="143" y="290" width="112" height="20" rx="9" fill="#fff"/>
+<circle cx="328" cy="300" r="28" fill="#88e6d7"/>
+<circle cx="328" cy="300" r="16" fill="#101b2a"/>
+</svg>
