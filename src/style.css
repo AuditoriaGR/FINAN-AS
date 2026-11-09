@@ -242,3 +242,24 @@
 @media(max-width:1000px){.payroll-cards{grid-template-columns:repeat(2,minmax(0,1fr))}.payroll-month-summary strong{font-size:14px}}
 @media(max-width:700px){.payroll-intro{flex-direction:column;align-items:flex-start;padding:19px}.payroll-intro h2{font-size:20px}.payroll-field-grid{grid-template-columns:1fr 1fr}.payroll-input-panel{padding:17px}.payroll-month-summary,.payroll-compare-grid,.payroll-family-grid{grid-template-columns:1fr}.payroll-result-tile strong{font-size:20px}}
 @media(max-width:430px){.payroll-field-grid,.payroll-cards{grid-template-columns:1fr}.payroll-timeline-row{grid-template-columns:80px 1fr;gap:7px}.payroll-timeline-row strong{grid-column:2}.payroll-result-head{align-items:flex-start}.payroll-result-head h2{font-size:16px}.payroll-person-switch button{flex:1;justify-content:center}}
+
+/* Reserva para recompor o salário habitual depois das férias */
+.payroll-reserve{padding:20px;margin:17px 0}
+.payroll-reserve .panel-head h2{display:flex;align-items:center;gap:8px}
+.payroll-reserve .panel-head h2 svg{color:#168a7c;flex-shrink:0}
+.payroll-reserve .small-hint{display:flex;align-items:flex-start;gap:7px}
+.payroll-reserve .small-hint svg{flex-shrink:0;margin-top:3px}
+.payroll-reserve-summary{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:13px 0 17px}
+.payroll-reserve-summary>div{background:#eaf7f3;border:1px solid #cfe6df;border-radius:12px;padding:17px;display:flex;flex-direction:column;gap:7px}
+.payroll-reserve-summary>div:nth-child(2){background:#f5f7fa;border-color:#e1e6ef}
+.payroll-reserve-summary small{font-size:11px;color:#607d7d}
+.payroll-reserve-summary strong{font-size:24px;line-height:1.3;color:#146b5b;overflow-wrap:anywhere}
+.payroll-reserve-summary span{font-size:11px;line-height:1.5;color:#72858a}
+.payroll-reserve-table{width:100%;min-width:650px}
+.payroll-reserve-table thead th{font-size:10px;line-height:1.45;white-space:normal}
+.payroll-reserve-table td{font-size:11px;line-height:1.5;vertical-align:top}
+.payroll-reserve-table td>strong{font-size:11px}
+.payroll-reserve-table td>small{display:block;font-size:10px;color:#85979b;margin-top:2px}
+.payroll-reserve-empty{padding:16px;background:#f2f7f7;border:1px solid #e2eeee;border-radius:10px;font-size:12px;line-height:1.7;color:#567078}
+.payroll-reserve-household{background:#fcfefc}
+@media(max-width:650px){.payroll-reserve{padding:15px}.payroll-reserve-summary{grid-template-columns:1fr}.payroll-reserve-summary strong{font-size:21px}}
