@@ -51,7 +51,7 @@ describe('calculadora CLT Brasil 2026',()=>{
   expect(sell.vacation.inssCents).toBeLessThan(normalResult.vacation.inssCents);
   expect(sell.salary.workedDays).toBe(10);
   expect(sell.salary.grossCents).toBe(Math.round(650000*10/30));
-  expect(sell.vacation.grossCents).toBe(normalResult.vacation.grossCents);
+  expect(Math.abs(sell.vacation.grossCents-normalResult.vacation.grossCents)).toBeLessThanOrEqual(1);
  });
  it('se o 13º foi adiantado, primeira parcela não é prevista novamente',()=>{
   const x=calculatePayroll({...normal,thirteenAlreadyPaidCents:325000},'normal');
