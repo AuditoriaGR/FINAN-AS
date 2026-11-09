@@ -104,3 +104,34 @@
  .investment-summary-tile strong{font-size:22px}
  .account-purpose-heading h2{font-size:16px}
 }
+
+/* Baixas financeiras: valor previsto × valor realizado */
+.realization-panel{margin-bottom:19px}
+.realization-period{font-size:12px;color:#61747a;background:#eff5f4;border-radius:999px;padding:6px 11px;white-space:nowrap}
+.realization-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;margin:15px 0}
+.realization-tile{border:1px solid #e2ecea;border-radius:12px;padding:16px;background:#fbfdfc;min-width:0}
+.realization-heading{display:flex;align-items:center;gap:7px;color:#385a60;font-size:13px;margin-bottom:14px}
+.realization-heading>svg{flex-shrink:0}
+.realization-line{display:flex;align-items:center;justify-content:space-between;gap:10px;color:#6c7d84;font-size:12px;margin:8px 0}
+.realization-line strong{color:#233e44;font-size:14px;white-space:nowrap}
+.realization-variance{font-weight:700;font-size:12px;margin-top:13px;line-height:1.5}
+.realization-variance.favorable,.settlement-preview.favorable,.realization-total.favorable{color:#197b62}
+.realization-variance.unfavorable,.settlement-preview.unfavorable,.realization-total.unfavorable{color:#b14b46}
+.realization-total{background:#f1f7f5}
+.realization-total.unfavorable{background:#fff7f4}
+.realization-big{font-size:26px;line-height:1.2;font-weight:800;margin:4px 0 8px}
+.realization-total p{font-size:12px;color:#5e7480;line-height:1.5;margin:0}
+.settlement-modal .modal-body{display:grid;gap:14px}
+.settlement-modal .field{margin:0}
+.settlement-detail{background:#f4f8f7;border:1px solid #e1ece8;border-radius:12px;padding:15px;display:grid;gap:7px}
+.settlement-detail>strong{font-size:16px;color:#1b3d43}
+.settlement-detail>small{font-size:12px;color:#74848b}
+.settlement-plan-line{border-top:1px solid #dfe8e6;padding-top:11px;display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:12px}
+.settlement-plan-line strong{font-size:18px;white-space:nowrap}
+.settlement-preview{border:1px solid #cee3d7;background:#f3faf6;border-radius:12px;display:grid;gap:5px;padding:14px}
+.settlement-preview.unfavorable{border-color:#f0d5ce;background:#fff7f4}
+.settlement-preview span{font-size:12px;font-weight:650}
+.settlement-preview strong{font-size:23px}
+.settlement-preview small{font-size:11px;color:#6a7b81}
+@media(max-width:900px){.realization-metrics{grid-template-columns:1fr 1fr}.realization-total{grid-column:1/-1}}
+@media(max-width:620px){.realization-metrics{grid-template-columns:1fr}.realization-total{grid-column:auto}.realization-tile{padding:14px}.realization-big{font-size:23px}.realization-line strong{font-size:13px}}
