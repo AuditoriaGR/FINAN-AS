@@ -1,6 +1,8 @@
 import {useEffect,useMemo,useState} from 'react';
 import {Calculator,Check,Copy,Info,Save,ShieldCheck,Users,CalendarDays,AlertTriangle} from 'lucide-react';
 import {cents,money,monthName} from './finance';
+import {planSalaryRecovery,combineSalaryReserves,type SalaryRecoveryPlan} from './salaryReserve';
+import {IndividualSalaryReserve,HouseholdSalaryReserve} from './SalaryRecoveryPanel';
 import {db} from './supabase';
 import {
  calculatePayroll,type PayrollInputs,
@@ -13,13 +15,14 @@ type PayrollForm={
  baseSalary:string;hazard:string;extras:string;
  monthlyDeductions:string;vacationDeductions:string;thirteenDeductions:string;
  dependents:string;vacationStart:string;entitlementDays:string;
- thirteenMonths:string;thirteenAlreadyPaid:string;thirteenOnVacation:boolean
+ thirteenMonths:string;thirteenAlreadyPaid:string;thirteenOnVacation:boolean;
+ habitualNet:string
 };
 type SavedRow={id:string;household_id:string;owner_id:string;person_key:PersonKey;display_name:string;
  base_salary_cents:number;hazard_cents:number;extras_cents:number;
  monthly_deductions_cents:number;vacation_deductions_cents:number;thirteen_deductions_cents:number;
  dependents:number;vacation_start:string|null;vacation_entitlement_days:number;thirteen_months:number;
- thirteen_paid_cents:number;thirteen_on_vacation:boolean};
+ thirteen_paid_cents:number;thirteen_on_vacation:boolean;habitual_net_cents:number|null};
 type Props={householdId?:string|null;uid?:string|null;connected:boolean};
 const DEFAULT_NAMES:Record<PersonKey,string>={rui:'Rui',taina:'Tainá'};
 const moneyInput=(n:number)=>(n/100).toFixed(2).replace('.',',');
@@ -27,7 +30,8 @@ function blankForm(key:PersonKey):PayrollForm{
  return {displayName:DEFAULT_NAMES[key],baseSalary:'',hazard:'',extras:'',
  monthlyDeductions:'',vacationDeductions:'',thirteenDeductions:'',
  dependents:'0',vacationStart:'',entitlementDays:'30',thirteenMonths:'12',
- thirteenAlreadyPaid:'',thirteenOnVacation:false};
+ thirteenAlreadyPaid:'',thirteenOnVacation:false,
+ habitualNet:key==='rui'?'4340,00':''};
 }
 const parseMoney=(raw:string)=>raw.trim()?cents(raw):0;
 const moneyProps=['baseSalary','hazard','extras','monthlyDeductions','vacationDeductions','thirteenDeductions','thirteenAlreadyPaid'] as const;
@@ -58,7 +62,9 @@ function formFromRow(row:SavedRow):PayrollForm{
   entitlementDays:String(row.vacation_entitlement_days),
   thirteenMonths:String(row.thirteen_months),
   thirteenAlreadyPaid:moneyInput(row.thirteen_paid_cents),
-  thirteenOnVacation:row.thirteen_on_vacation
+  thirteenOnVacation:row.thirteen_on_vacation,
+  habitualNet:row.habitual_net_cents===null || row.habitual_net_cents===undefined
+   ?row.person_key==='rui'?'4340,00':'':moneyInput(row.habitual_net_cents)
  };
 }
 function validStartDate(value:string){return !value||(/^2026-\d{2}-\d{2}$/.test(value)&&
@@ -87,8 +93,8 @@ function Breakdown({title,items,total,highlight=false}:{
    <strong>{total.value===null?'Sem líquido legal':money(total.value)}</strong></div>
  </div>;
 }
-function ResultArea({result,person,compare}:{
- result:PayrollResult;person:string;compare:{normal:PayrollResult;sell10:PayrollResult}
+function ResultArea({result,person,compare,recovery}:{
+ result:PayrollResult;person:string;compare:{normal:PayrollResult;sell10:PayrollResult};recovery:SalaryRecoveryPlan
 }){
  const [copied,setCopied]=useState(false);
  const schedule=result.payments;
@@ -102,6 +108,7 @@ function ResultArea({result,person,compare}:{
    `1ª parcela pendente do 13º: ${money(result.thirteen.firstCents)}`,
    `2ª parcela líquida do 13º: ${money(result.thirteen.secondNetCents)}`,
    `Total previsto: ${result.totalNetCents===null?'não aplicável':money(result.totalNetCents)}`,
+   ...recovery.rows.map(r=>`Salário de ${monthName(r.payMonth)}: ${money(r.expectedNetCents)}; reservar em ${monthName(r.reserveMonth)}: ${money(r.reserveNeededCents)}`),
    'Estimativa: valores reais dependem do RH/holerite e das competências tributárias.'
   ].join('\n');
   void navigator.clipboard.writeText(text).then(()=>{setCopied(true)}).catch(()=>{setCopied(false)});
@@ -135,6 +142,7 @@ function ResultArea({result,person,compare}:{
     <p>30 dias de férias vendidos não são admitidos como abono pecuniário. Para fins de sensibilidade financeira,
      o equivalente bruto a 30 dias mais 1/3 seria {money(result.vacation.hypotheticalExtraGrossCents)}.
      Não é previsão de pagamento, não tem líquido estimado e não foi somado aos recebimentos.</p></div></div>}
+  <IndividualSalaryReserve plan={recovery} person={person}/>
   <div className="payroll-breakdowns">
    <Breakdown title="Recibo estimado de férias" items={[
     {label:'Remuneração dos dias de descanso',value:result.vacation.leaveGrossCents},
@@ -235,21 +243,38 @@ export default function PayrollCalculator({householdId,uid,connected}:Props){
    return {error:e instanceof Error?e.message:'Revise os campos.',result:null,normal:null,sell10:null};
   }
  },[form,variant,month]);
+ const recovery=useMemo(()=>{
+  try{
+   const input=formToInput(form);
+   const habitual=form.habitualNet.trim()?parseMoney(form.habitualNet):0;
+   if(!Number.isSafeInteger(habitual)||habitual<0)throw new Error('Informe uma média líquida válida.');
+   return {plan:planSalaryRecovery(input,variant,month,habitual),error:''};
+  }catch(e){
+   return {plan:null,error:e instanceof Error?e.message:'Revise a média líquida.'};
+  }
+ },[form,variant,month]);
  const activeResult=calc.result;
  const family=useMemo(()=>{
-  const output:{name:string;result:PayrollResult}[]=[];
+  const output:{name:string;result:PayrollResult;recovery:SalaryRecoveryPlan}[]=[];
   for(const key of ['rui','taina'] as const){
    try{
     const inp=formToInput(forms[key]);
     if(inp.baseSalaryCents<=0)continue;
     const result=calculatePayroll(inp,variants[key],month);
-    if(result.legal)output.push({name:forms[key].displayName||DEFAULT_NAMES[key],result});
+    const average=forms[key].habitualNet.trim()?parseMoney(forms[key].habitualNet):0;
+    if(!Number.isSafeInteger(average)||average<0)continue;
+    if(result.legal)output.push({
+     name:forms[key].displayName||DEFAULT_NAMES[key],result,
+     recovery:planSalaryRecovery(inp,variants[key],month,average)
+    });
    }catch{/* Editar um perfil incompleto não impede o outro cálculo. */}
   }
   const total=output.reduce((s,p)=>s+(p.result.totalNetCents??0),0);
   const monthTotal=output.reduce((s,p)=>s+p.result.netInMonthCents,0);
   const nextTotal=output.reduce((s,p)=>s+p.result.netFollowingMonthCents,0);
-  return {output,total,monthTotal,nextTotal};
+  return {output,total,monthTotal,nextTotal,
+   reserves:combineSalaryReserves(output.map(p=>p.recovery)),
+   reservedNames:output.filter(p=>p.recovery.hasOrdinaryNet).map(p=>p.name)};
  },[forms,variants,month]);
  const save=async()=>{
   if(!connected||!db||!householdId||!uid){setStatus('Entre na conta do casal para salvar os perfis.');return}
@@ -258,6 +283,11 @@ export default function PayrollCalculator({householdId,uid,connected}:Props){
    input=formToInput(form);
    if(!form.displayName.trim())throw new Error('Informe o nome do integrante.');
    if(input.baseSalaryCents<=0)throw new Error('Informe um salário-base maior que zero.');
+   if(form.habitualNet.trim()){
+    const average=parseMoney(form.habitualNet);
+    if(!Number.isSafeInteger(average)||average<0)
+     throw new Error('Informe uma média líquida válida, sem valores negativos.');
+   }
    if(!validStartDate(input.vacationStart))throw new Error('Informe uma data válida de férias em 2026.');
   }catch(e){setStatus(e instanceof Error?e.message:'Revise os campos.');return}
   setBusy(true);setStatus('');
@@ -270,6 +300,7 @@ export default function PayrollCalculator({householdId,uid,connected}:Props){
    dependents:input.dependents,vacation_start:input.vacationStart||null,
    vacation_entitlement_days:input.entitlementDays,thirteen_months:input.thirteenMonths,
    thirteen_paid_cents:input.thirteenAlreadyPaidCents,
+   habitual_net_cents:form.habitualNet.trim()?parseMoney(form.habitualNet):null,
    thirteen_on_vacation:input.thirteenOnVacation,
    updated_at:new Date().toISOString()
   };
@@ -320,6 +351,13 @@ export default function PayrollCalculator({householdId,uid,connected}:Props){
     <button className="secondary payroll-quick" onClick={()=>change('hazard',moneyInput(Math.round(parseMoney(form.baseSalary)*.30)))}>
      Usar 30% do salário-base como periculosidade
     </button>
+    <h3 className="payroll-field-section">Reserva para salário após férias</h3>
+    <div className="payroll-field-grid">
+     <MoneyField label="Média do salário líquido habitual (R$)" value={form.habitualNet}
+      onChange={x=>change('habitualNet',x)}
+      hint="Quanto normalmente entra na conta todo mês, após os descontos. Referência inicial Rui: R$ 4.340,00."/>
+    </div>
+    <p className="small-hint">O simulador mostrará quanto guardar no mês anterior para complementar cada um dos três próximos salários. Não será registrada uma receita adicional.</p>
     <h3 className="payroll-field-section">Férias de 2026</h3>
     <div className="payroll-field-grid">
      <label className="field payroll-field"><span>Início das férias</span>
@@ -359,7 +397,7 @@ export default function PayrollCalculator({householdId,uid,connected}:Props){
     </div>
     <label className="field payroll-field"><span>Mês de referência do salário (tabelas válidas somente para 2026)</span>
      <input type="month" min="2026-01" max="2026-12" value={month} onChange={e=>setMonth(e.target.value)}/></label>
-    {calc.error&&<div className="payroll-error"><AlertTriangle size={17}/>{calc.error}</div>}
+    {(calc.error||recovery.error)&&<div className="payroll-error"><AlertTriangle size={17}/>{calc.error||recovery.error}</div>}
     {status&&<div className="payroll-status"><Info size={16}/>{status}</div>}
     <button className="primary payroll-save" disabled={busy||loading||!connected||!householdId} onClick={()=>void save()}>
      <Save size={18}/> {busy?'Salvando…':'Salvar dados de '+(form.displayName||DEFAULT_NAMES[person])}
@@ -368,9 +406,9 @@ export default function PayrollCalculator({householdId,uid,connected}:Props){
     <p className="small-hint"><ShieldCheck size={14}/> Estes dados são compartilhados apenas com a casa autenticada. Nenhum valor é incluído automaticamente como receita, evitando duplicar salários já lançados no orçamento.</p>
    </div>
    <div>
-    {activeResult&&formToInput(form).baseSalaryCents>0
+    {activeResult&&recovery.plan&&formToInput(form).baseSalaryCents>0
       ?<ResultArea key={person+'-'+variant} result={activeResult} person={form.displayName}
-        compare={{normal:calc.normal!,sell10:calc.sell10!}}/>
+        compare={{normal:calc.normal!,sell10:calc.sell10!}} recovery={recovery.plan}/>
       :<section className="panel payroll-empty"><Calculator size={36}/>
         <h2>Preencha o salário-base para calcular</h2>
         <p>O recibo de férias, o salário de 05/12 e as parcelas do 13º aparecerão aqui, com detalhes de descontos.</p></section>}
@@ -387,10 +425,11 @@ export default function PayrollCalculator({householdId,uid,connected}:Props){
    </div>
    <p className="small-hint">Perfis considerados: {family.output.map(x=>x.name).join(' + ')}. Despesas não foram deduzidas deste total; consulte Planejamento para comparar recebimentos com as contas.</p>
   </section>}
+  {family.reserves.length>0&&<HouseholdSalaryReserve rows={family.reserves} names={family.reservedNames}/>}
   <div className="payroll-disclaimer">
    <AlertTriangle size={19}/><div>
     <strong>Estimativa, não substitui o recibo de férias nem o holerite.</strong>
-    <p>INSS 2026 e IRRF 2026 são calculados por faixas progressivas; a redução de imposto de 2026 também vale para o 13º. O cálculo de férias utiliza o valor dos dias gozados mais 1/3, e isenta o abono pecuniário de 1/3 dos dias. Datas de pagamento, projeção do salário pós-férias, competência tributária, outras verbas, médias e compensações de adiantamentos podem gerar diferenças. A venda integral de férias não é autorizada pela CLT.</p>
+    <p>INSS 2026 e IRRF 2026 são calculados por faixas progressivas; a redução de imposto de 2026 também vale para o 13º. O cálculo de férias utiliza o valor dos dias gozados mais 1/3, e isenta o abono pecuniário de 1/3 dos dias. Datas de pagamento, projeção do salário pós-férias, competência tributária, outras verbas, médias e compensações de adiantamentos podem gerar diferenças. A venda integral de férias não é autorizada pela CLT. Para salários previstos para 2027, as faixas de INSS e IRRF de 2026 são usadas apenas como referência até atualização das tabelas; compare o valor líquido com o RH.</p>
     <p>Fontes: <a href="https://www.gov.br/inss/pt-br/direitos-e-deveres/inscricao-e-contribuicao/tabela-de-contribuicao-mensal" target="_blank" rel="noreferrer">INSS 2026</a> · <a href="https://www.gov.br/receitafederal/pt-br/assuntos/meu-imposto-de-renda/tabelas/2026" target="_blank" rel="noreferrer">IRRF 2026</a> · <a href="https://www.gov.br/trabalho-e-emprego/pt-br/acesso-a-informacao/perguntas-frequentes" target="_blank" rel="noreferrer">Férias (MTE)</a> · <a href="https://www.gov.br/esocial/pt-br/empregador-domestico/perguntas-frequentes/perguntas-frequentes/" target="_blank" rel="noreferrer">13º (eSocial)</a>.</p>
    </div>
   </div>
