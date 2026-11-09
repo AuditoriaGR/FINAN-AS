@@ -7,7 +7,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run && node scripts/verify-pwa.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.58.0",
