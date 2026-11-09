@@ -6,12 +6,16 @@ import {db,configured} from './supabase';
 import {demoData,demoHousehold,demoUser} from './demo';
 import FixedCommitments from './FixedCommitments';
 import AccountsOverview from './AccountsOverview';
+import TransactionsPage from './TransactionsPage';
+import SettlementModal,{type SettleInput} from './SettlementModal';
+import SettlementSummaryPanel from './SettlementSummaryPanel';
+import {settlementVariance} from './settlements';
 import CardSpendingBudget from './CardSpendingBudget';
 import FuturePlanning from './FuturePlanning';
 import SpendingInsightsPanel from './SpendingInsightsPanel';
 import {effectiveCategoryBudgets,projectedWithCarryForward} from './planning';
 import {blankData,categories,type Tables,type Tx,type Scope,type Household} from './types';
-import {money,cents,monthShift,dueDate,today,monthName,visible,adjustedMonthlyTotals,budgetStatus,goalProgress,accountBalance,accountBalancesByPurpose,cardInvoice,generateAlerts,installmentPlan,installmentSummary,invoiceMonthForPurchase,isoMonth,recurringDueDateForCharge,cardSpendingSummary} from './finance';
+import {money,cents,monthShift,dueDate,today,monthName,visible,adjustedMonthlyTotals,budgetStatus,goalProgress,accountBalance,accountBalancesByPurpose,isInvestmentAccount,cardInvoice,generateAlerts,installmentPlan,installmentSummary,invoiceMonthForPurchase,isoMonth,recurringDueDateForCharge,cardSpendingSummary} from './finance';
 
 type Page='dashboard'|'transactions'|'fixed'|'budgets'|'goals'|'cards'|'accounts'|'planning'|'comparison'|'insights'|'alerts'|'settings';
 type Modal='transaction'|'budget'|'goal'|'contribution'|'account'|'accountbalance'|'card'|'cardstatement'|'recurring'|'adjustfixed'|'payment'|null;
@@ -25,7 +29,26 @@ function Meter({percent}:{percent:number}){return <div className="meter"><span c
 function Tag({scope}:{scope:Scope}){return <span className={`tag ${scope}`}>{scope==='shared'?'Casal':'Individual'}</span>}
 function Field({label,children}:{label:string;children:ReactNode}){return <label className="field"><span>{label}</span>{children}</label>}
 function Badge({children}:{children:ReactNode}){return <span className="top-badge">{children}</span>}
-function downloadCSV(txs:Tx[]){const sep=';';const headings=['Data','Vencimento','Descrição','Tipo','Categoria','Valor (R$)','Status','Visibilidade'];const rows=txs.map(t=>[t.transaction_date,t.due_date,t.description,t.type==='income'?'Receita':'Despesa',t.category,(t.amount_cents/100).toFixed(2).replace('.',','),(t.in_opening_balance?'Já no saldo inicial':t.paid_at?'Pago':'Pendente'),t.scope==='shared'?'Casal':'Individual']);const escape=(v:string)=>`"${v.replaceAll('"','""')}"`;const output='\uFEFF'+[headings,...rows].map(r=>r.map(escape).join(sep)).join('\r\n');const url=URL.createObjectURL(new Blob([output],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='meu-financeiro-lancamentos.csv';a.click();URL.revokeObjectURL(url)}
+function downloadCSV(txs:Tx[]){
+ const headings=['Data','Vencimento','Descrição','Tipo','Categoria','Previsto (R$)','Realizado (R$)','Desvio favorável (R$)','Data da baixa','Status','Visibilidade'];
+ const fmt=(n:number)=>(n/100).toFixed(2).replace('.',',');
+ const rows=txs.map(t=>{
+  const variance=settlementVariance(t);
+  return [
+   t.transaction_date,t.due_date,t.description,t.type==='income'?'Receita':'Despesa',t.category,
+   fmt(t.planned_amount_cents??t.amount_cents),
+   t.paid_at&&!t.card_id?fmt(t.amount_cents):'',
+   variance===null?'':fmt(variance),
+   t.paid_at||'',
+   t.in_opening_balance?'Já no saldo inicial':t.card_id?'Na fatura':t.paid_at?(t.type==='income'?'Recebido':'Pago'):'Pendente',
+   t.scope==='shared'?'Casal':'Individual'
+  ];
+ });
+ const escape=(v:string)=>`"${v.replaceAll('"','""')}"`;
+ const output='\uFEFF'+[headings,...rows].map(r=>r.map(escape).join(';')).join('\r\n');
+ const url=URL.createObjectURL(new Blob([output],{type:'text/csv;charset=utf-8'}));
+ const a=document.createElement('a');a.href=url;a.download='meu-financeiro-previsto-realizado.csv';a.click();URL.revokeObjectURL(url);
+}
 
 export default function App(){
  const [user,setUser]=useState<User|null>(null),[authLoaded,setAuthLoaded]=useState(!configured),[authMode,setAuthMode]=useState<'login'|'register'>('login');
@@ -33,6 +56,7 @@ export default function App(){
  const [data,setData]=useState<Tables>(()=>structuredClone(configured?blankData:demoData)),[household,setHousehold]=useState<Household|null>(configured?null:demoHousehold);
  const PLANNING_START_MONTH='2026-11';
  const [page,setPage]=useState<Page>('dashboard'),[month,setMonth]=useState(today().slice(0,7)<'2026-11'?'2026-11':today().slice(0,7));
+ const [settlementId,setSettlementId]=useState<string|null>(null);
  const [modal,setModal]=useState<Modal>(null),[form,setForm]=useState<Record<string,string>>({}),[context,setContext]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false),[sidebar,setSidebar]=useState(false);
  const [familyName,setFamilyName]=useState('Nossa casa'),[displayName,setDisplayName]=useState(''),[invite,setInvite]=useState(''),[inviteInput,setInviteInput]=useState('');
  const view:View='all';
@@ -106,6 +130,46 @@ export default function App(){
   setData(old=>({...old,[table]:(old[table] as {id?:string}[]).filter(x=>x.id!==id)}));
   await refresh();
   saveNotice('Registro excluído. Projeção atualizada com os dados do banco.');
+ };
+ const settleTransaction=async(input:SettleInput):Promise<boolean>=>{
+  const entry=data.transactions.find(t=>t.id===input.transactionId);
+  const account=data.accounts.find(a=>a.id===input.accountId);
+  if(!entry||entry.card_id||entry.in_opening_balance){
+   saveNotice('Use a fatura para compras no cartão. Lançamentos já no saldo inicial não recebem outra baixa.');
+   return false;
+  }
+  if(!account||isInvestmentAccount(account)){
+   saveNotice('Selecione uma conta disponível, não uma aplicação CDB.');
+   return false;
+  }
+  if(!Number.isSafeInteger(input.actualCents)||input.actualCents<=0||!input.paidOn||input.paidOn>today()){
+   saveNotice('Informe o valor real e uma data válida de baixa.');
+   return false;
+  }
+  setBusy(true);
+  try{
+   if(db){
+    const result=await db.rpc('settle_transaction',{
+     p_transaction_id:input.transactionId,
+     p_actual_amount_cents:input.actualCents,
+     p_paid_on:input.paidOn,
+     p_account_id:input.accountId
+    });
+    if(result.error)throw Error(result.error.message);
+    await refresh();
+   }else{
+    setData(old=>({...old,transactions:old.transactions.map(t=>t.id===input.transactionId?
+     {...t,planned_amount_cents:t.planned_amount_cents??t.amount_cents,
+      amount_cents:input.actualCents,paid_at:input.paidOn,account_id:input.accountId}:t)}));
+   }
+   const planned=entry.planned_amount_cents??entry.amount_cents;
+   const favorable=entry.type==='income'?input.actualCents-planned:planned-input.actualCents;
+   saveNotice(`Baixa confirmada. ${favorable===0?'Valor conforme o previsto':favorable>0?'Diferença favorável':'Diferença desfavorável'}: ${money(Math.abs(favorable))}.`);
+   return true;
+  }catch(err){
+   saveNotice(err instanceof Error?err.message:'Não foi possível registrar a baixa.');
+   return false;
+  }finally{setBusy(false)}
  };
  const open=(m:Modal,id='')=>{
   setModal(m);setContext(id);
@@ -285,6 +349,7 @@ export default function App(){
  const categoryChart=[...categories.map(category=>({name:category,value:Math.round(transactions.filter(t=>t.type==='expense'&&isoMonth(t.due_date)===month&&t.category===category).reduce((s,t)=>s+t.amount_cents,0)/100)})),...(metrics.statementAdjustment>0?[{name:'Faturas sem detalhamento',value:Math.round(metrics.statementAdjustment/100)}]:[])].filter(c=>c.value>0).sort((a,b)=>b.value-a.value);
  const projectedMonth=projections[0]?.balanceCents||0;
  const projectedAccumulated=projections[0]?.cumulativeCents||0;
+ const settlementEntry=transactions.find(t=>t.id===settlementId)??null;
  const title=nav.find(x=>x.id===page)?.name||'Visão geral';
  const availBudget=effectiveBudgets.reduce((a,b)=>a+Math.max(0,b.amount_cents-budgetStatus(b,transactions).spent),0);
 
@@ -300,12 +365,20 @@ export default function App(){
   {notice&&<div className="toast"><Info size={17}/>{notice}<button onClick={()=>setNotice('')}><X size={15}/></button></div>}
   {page==='dashboard'&&<>
     <div className="kpis"><div className="kpi"><div className="kpi-head"><span>Disponível nas contas</span><IconBadge><Wallet size={20}/></IconBadge></div><strong>{money(accountBalances.availableCents)}</strong><small>Dinheiro disponível para pagamentos, sem CDBs.</small></div><div className="kpi"><div className="kpi-head"><span>Investimentos · CDB</span><IconBadge variant="blue"><PiggyBank size={20}/></IconBadge></div><strong>{money(accountBalances.investmentCents)}</strong><small>Patrimônio aplicado, fora do saldo projetado.</small></div><div className="kpi"><div className="kpi-head"><span>Receitas previstas</span><IconBadge><ArrowDownRight size={20}/></IconBadge></div><strong>{money(projections[0]?.incomeCents||0)}</strong><small>{monthName(month)}</small></div><div className="kpi"><div className="kpi-head"><span>Despesas com reservas</span><IconBadge variant="coral"><ArrowUpRight size={20}/></IconBadge></div><strong>{money(projections[0]?.expenseCents||0)}</strong><small>Inclui pisos de orçamento e teto dos cartões</small></div><div className="kpi highlighted"><div className="kpi-head"><span>Saldo projetado acumulado</span><IconBadge variant="gold"><ChartNoAxesCombined size={20}/></IconBadge></div><strong>{money(projectedAccumulated)}</strong><small>Dinheiro disponível + movimentos futuros, sem CDBs. Resultado de {monthName(month)}: {money(projectedMonth)}</small></div></div>
+    <SettlementSummaryPanel transactions={transactions} month={month}/>
     <div className="dashboard-grid"><section className="panel chart-panel"><div className="panel-head"><div><h2>Receitas e despesas</h2><p>Projeção a partir do mês selecionado, sem períodos anteriores a novembro de 2026</p></div><Badge>Mensal</Badge></div><div className="chart-box"><ResponsiveContainer width="100%" height="100%"><AreaChart data={chartData} margin={{top:10,right:6,left:-10,bottom:0}}><defs><linearGradient id="green" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#188b7f" stopOpacity={.28}/><stop offset="100%" stopColor="#188b7f" stopOpacity={0}/></linearGradient><linearGradient id="orange" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#dba16a" stopOpacity={.25}/><stop offset="100%" stopColor="#dba16a" stopOpacity={0}/></linearGradient></defs><CartesianGrid stroke="#e9eeef" strokeDasharray="3 3" vertical={false}/><XAxis dataKey="mes" axisLine={false} tickLine={false} tick={{fontSize:11,fill:'#80919a'}}/><YAxis axisLine={false} tickLine={false} tick={{fontSize:11,fill:'#80919a'}} tickFormatter={n=>n>=1000?`${Math.round(n/1000)}k`:String(n)}/><Tooltip formatter={v=>money(Number(v||0)*100)}/><Legend iconType="circle"/><Area type="monotone" dataKey="Receitas" stroke="#168a7d" strokeWidth={2.5} fill="url(#green)"/><Area type="monotone" dataKey="Despesas" stroke="#d99658" strokeWidth={2.5} fill="url(#orange)"/></AreaChart></ResponsiveContainer></div></section>
     <section className="panel category-panel"><div className="panel-head"><div><h2>Para onde vai?</h2><p>Despesas por categoria</p></div></div>{categoryChart.length?<><div className="donut"><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={categoryChart} dataKey="value" innerRadius={67} outerRadius={90} paddingAngle={3} stroke="none">{categoryChart.map((d,i)=><Cell key={d.name} fill={palette[i%palette.length]}/>)}</Pie><Tooltip formatter={v=>money(Number(v||0)*100)}/></PieChart></ResponsiveContainer><div className="donut-center"><small>Total</small><strong>{money(metrics.expense)}</strong></div></div><div className="legend-list">{categoryChart.slice(0,5).map((x,i)=><div key={x.name}><span className="legend-dot" style={{background:palette[i%palette.length]}}/>{x.name}<strong>{money(x.value*100)}</strong></div>)}</div></>:<Empty text="Nenhuma despesa registrada para este mês."/>}</section></div>
     <div className="dashboard-grid bottom-grid"><section className="panel"><div className="panel-head"><div><h2>Orçamento sob controle</h2><p>Quanto ainda cabe no planejamento</p></div><button className="text-action" onClick={()=>setPage('budgets')}>Ver todos <ArrowUpRight size={14}/></button></div>{budgets.filter(x=>x.month===month).slice(0,4).map(b=>{const x=budgetStatus(b,transactions);return <div className="budget-mini" key={b.id}><div className="line-between"><strong>{b.category}</strong><small>{money(x.spent)} de {money(b.amount_cents)}</small></div><Meter percent={x.percent}/></div>})}{!budgets.some(x=>x.month===month)&&<Empty text="Cadastre os limites do orçamento." action={()=>open('budget')}/>}<div className="panel-footer">Disponível nas categorias: <strong>{money(availBudget)}</strong></div></section><section className="panel"><div className="panel-head"><div><h2>Últimos lançamentos</h2><p>Registros do mês selecionado</p></div><button className="text-action" onClick={()=>setPage('transactions')}>Ver todos <ArrowUpRight size={14}/></button></div><div className="recent-list">{transactions.filter(t=>isoMonth(t.due_date)===month).slice(-5).reverse().map(t=><div className="recent-item" key={t.id}><span className={`tx-symbol ${t.type}`}>{t.type==='income'?<ArrowDownRight size={17}/>:<ArrowUpRight size={17}/>}</span><div><strong>{t.description}</strong><small>{t.category} · {mDate(t.due_date)}</small></div><strong className={t.type==='income'?'positive':''}>{t.type==='income'?'+':'−'} {money(t.amount_cents)}</strong></div>)}{!transactions.some(t=>isoMonth(t.due_date)===month)&&<Empty text="Nenhum lançamento neste mês." action={()=>open('transaction')}/>}</div></section></div>
     {alerts.length>0&&<section className="panel alert-summary"><div><Bell size={20}/><strong>{alerts.length} ponto(s) de atenção</strong><span>{alerts[0].title}</span></div><button className="text-action" onClick={()=>setPage('alerts')}>Ver alertas <ArrowUpRight size={14}/></button></section>}
    </>}
-  {page==='transactions'&&<section className="panel"><div className="panel-head"><div><h2>Movimentações do mês</h2><p>Valores, vencimentos, status e responsáveis</p></div><div className="panel-actions"><button className="secondary" onClick={()=>downloadCSV(transactions)}><Download size={16}/> Exportar CSV</button><button className="secondary" onClick={()=>{open('recurring');setForm(v=>({...v,type:'expense',category:'Energia elétrica'}))}}><Plus size={16}/> Despesa fixa</button><button className="primary" onClick={()=>open('transaction')}><Plus size={17}/> Novo lançamento</button></div></div>{transactions.filter(t=>isoMonth(t.due_date)===month).length?<div className="table-wrap"><table><thead><tr><th>Descrição</th><th>Categoria</th><th>Vencimento</th><th>Visibilidade</th><th>Status</th><th className="text-right">Valor</th><th/></tr></thead><tbody>{[...transactions].filter(t=>isoMonth(t.due_date)===month).sort((a,b)=>a.due_date.localeCompare(b.due_date)).map(t=><tr key={t.id}><td><strong>{t.description}</strong>{t.installment_number&&<div className="table-note">Parcela {t.installment_number}/{t.installment_total}</div>}</td><td>{t.category}</td><td>{mDate(t.due_date)}</td><td><Tag scope={t.scope}/></td><td><span className={`status ${t.in_opening_balance?'paid':t.card_id?'neutral':t.paid_at?'paid':'pending'}`}>{t.in_opening_balance?'Já no saldo inicial':t.card_id?'Na fatura':t.paid_at?'Pago':'Pendente'}</span></td><td className={`text-right strong ${t.type==='income'?'positive':''}`}>{t.type==='income'?'+':'−'} {money(t.amount_cents)}</td><td><div className="table-buttons">{(t.owner_id===uid||t.scope==='shared')&&!t.card_id&&!t.paid_at&&!t.in_opening_balance&&<button title="Marcar como pago" onClick={()=>void patch('transactions',t.id,{paid_at:today()})}><Check size={16}/></button>}{(t.owner_id===uid||t.scope==='shared')&&<button title="Excluir" onClick={()=>void del('transactions',t.id)}><X size={16}/></button>}</div></td></tr>)}</tbody></table></div>:<Empty text="Ainda não há lançamentos neste mês." action={()=>open('transaction')}/>}</section>}
+  {page==='transactions'&&<TransactionsPage
+   transactions={transactions} month={month} uid={uid}
+   onExport={()=>downloadCSV(transactions)}
+   onNew={()=>open('transaction')}
+   onNewFixed={()=>{open('recurring');setForm(v=>({...v,type:'expense',category:'Energia elétrica'}))}}
+   onSettle={setSettlementId}
+   onDelete={id=>void del('transactions',id)}
+  />}
   {page==='fixed'&&<FixedCommitments
     rules={visible(data.recurring_rules,view,uid)}
     transactions={transactions}
@@ -375,6 +448,10 @@ export default function App(){
   {page==='alerts'&&<section className="panel"><div className="panel-head"><div><h2>Central de alertas</h2><p>Orçamentos, vencimentos, metas e previsão de resultado</p></div><Badge>{alerts.length} notificações</Badge></div><div className="alert-list">{alerts.map((a,i)=><div className="alert-entry" key={`${a.title}${i}`}><IconBadge variant={a.kind==='danger'?'coral':a.kind==='warn'?'gold':'blue'}>{a.kind==='info'?<Info size={19}/>:<AlertTriangle size={19}/>}</IconBadge><div><strong>{a.title}</strong><p>{a.detail}</p></div><span className={`alert-type ${a.kind}`}>{a.kind==='danger'?'Atenção':a.kind==='warn'?'Aviso':'Informativo'}</span></div>)}{!alerts.length&&<div className="all-good"><CheckCircle2 size={36}/><h3>Sem alertas no momento</h3><p>Os próximos avisos aparecerão automaticamente aqui.</p></div>}</div></section>}
   {page==='settings'&&<div className="settings-grid"><section className="panel"><div className="panel-head"><div><h2>Espaço do casal</h2><p>{household?.name}</p></div><IconBadge><Users size={19}/></IconBadge></div><div className="member-list">{data.household_members.map(m=><div key={m.user_id}><span className="avatar soft">{m.display_name.slice(0,1).toUpperCase()}</span><div><strong>{m.display_name}</strong><small>{m.role==='owner'?'Administrador':'Integrante'}</small></div></div>)}</div>{configured&&user?.id===household?.created_by&&data.household_members.length<2&&<><p className="small-hint">Gere um convite de uso único, válido por 7 dias, para sua parceira.</p><button className="primary" onClick={createInvite}><Copy size={17}/> Gerar convite</button>{invite&&<div className="invite-box"><code>{invite}</code><button onClick={()=>{navigator.clipboard.writeText(invite);saveNotice('Código copiado.')}}><Copy size={17}/></button></div>}</>}</section><section className="panel"><div className="panel-head"><div><h2>Seus dados</h2><p>Segurança, exportação e sessão</p></div><IconBadge variant="blue"><ShieldCheck size={19}/></IconBadge></div><p className="settings-text">Os dados privados são protegidos por regras de acesso no banco. Registros compartilhados podem ser vistos pelos integrantes do grupo.</p><button className="secondary full" onClick={()=>downloadCSV(transactions)}><Download size={17}/> Exportar lançamentos em CSV</button>{configured&&<button className="secondary full" onClick={()=>db?.auth.signOut()}><LogOut size={17}/> Encerrar sessão</button>}</section></div>}
   </div></main>
+  {settlementEntry&&<SettlementModal
+   key={settlementEntry.id} tx={settlementEntry} accounts={accounts} busy={busy}
+   onSave={settleTransaction} onClose={()=>setSettlementId(null)}
+  />}
   {modal&&<div className="modal-backdrop" onMouseDown={e=>{if(e.target===e.currentTarget)setModal(null)}}><form className="modal" onSubmit={submitModal}><div className="modal-head"><div><span className="eyebrow">MEU FINANCEIRO</span><h2>{{transaction:'Novo lançamento',budget:'Criar orçamento',goal:'Nova meta',contribution:'Adicionar aporte',account:'Nova conta',accountbalance:'Atualizar saldo atual',card:'Novo cartão',cardstatement:'Informar valor real da fatura',recurring:context?'Editar receita/despesa fixa':'Nova receita/despesa fixa',adjustfixed:'Valor real da conta no mês',payment:'Pagamento de fatura'}[modal]}</h2></div><button type="button" className="icon-button" onClick={()=>setModal(null)}><X size={21}/></button></div><div className="modal-body">
     {modal!=='contribution'&&modal!=='payment'&&modal!=='adjustfixed'&&modal!=='accountbalance'&&modal!=='cardstatement'&&<div className="small-hint">Este lançamento será compartilhado com o casal.</div>}
     {(modal==='transaction'||modal==='recurring')&&<Field label="Tipo de movimentação"><select value={form.type} onChange={e=>f('type',e.target.value)}><option value="expense">Despesa</option><option value="income">Receita</option></select></Field>}
